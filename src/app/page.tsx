@@ -1,11 +1,41 @@
 'use client'; // This component needs client-side interactivity
 
 import { useChat, Message } from 'ai/react'; // Vercel AI SDK hook
+import ReactMarkdown from 'react-markdown';
+import { useEffect, useRef } from 'react'; // Import useEffect and useRef
 
 export default function Chat() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, isLoading, error, setMessages } = useChat({
     api: '/api/chat', // Points to our backend route
   });
+  const messagesEndRef = useRef<HTMLDivElement>(null); // Create a ref for the scroll target
+
+  const USER_NAME = "Alex"; // Hardcoded user name for MVP
+
+  // Send initial greeting message
+  useEffect(() => {
+    // Check if messages array is empty to prevent adding greeting multiple times
+    // (e.g. on hot reloads in development)
+    if (messages.length === 0) {
+      const initialAssistantMessage: Message = {
+        id: 'initial-greeting',
+        role: 'assistant',
+        content: `Hallo ${USER_NAME}! Wie kann ich dir helfen?`,
+      };
+      setMessages([initialAssistantMessage]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array ensures this runs only once on mount
+
+  // Function to scroll to the bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // Scroll to bottom whenever messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   return (
     <div className="flex flex-col w-full max-w-2xl mx-auto py-12 px-4">
@@ -19,19 +49,21 @@ export default function Chat() {
                     <div key={m.id} className={`whitespace-pre-wrap ${
                         m.role === 'user' ? 'text-right' : 'text-left'
                     }`}>
-                        <span className={`inline-block px-4 py-2 rounded-lg ${
+                        <div className={`inline-block px-4 py-2 rounded-lg ${
                             m.role === 'user'
                                 ? 'bg-blue-500 text-white'
                                 : 'bg-gray-200 text-gray-800'
                         }`}>
-                            {m.role === 'user' ? 'You: ' : 'Coach: '}
-                            {m.content}
-                        </span>
+                            <div className={m.role === 'assistant' ? 'prose' : ''}>
+                                {m.role === 'user' ? m.content : <ReactMarkdown>{m.content}</ReactMarkdown>}
+                            </div>
+                        </div>
                     </div>
                 ))
             ) : (
                 <p className="text-center text-gray-400">No messages yet. Ask something!</p>
             )}
+            <div ref={messagesEndRef} /> {/* Invisible element to scroll to */}
         </div>
 
         {/* Error Display */}
