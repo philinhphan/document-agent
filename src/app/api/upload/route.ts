@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import path from 'path';
 import { mkdir } from 'fs/promises';
+import { createClient } from '@supabase/supabase-js';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,6 +41,35 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     await writeFile(filePath, buffer);
+
+    // Initialize Supabase client
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    const supabaseClient = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY
+    );
+
+    // Record the upload in Supabase
+    const { error: uploadError } = await supabaseClient
+      .from('document_uploads')
+      .insert([
+        {
+          filename: filename,
+          original_name: file.name,
+          file_size: file.size,
+          mime_type: file.type,
+          upload_timestamp: new Date().toISOString(),
+          status: 'uploaded'
+        }
+      ]);
+
+    if (uploadError) {
+      console.error('Error recording upload in Supabase:', uploadError);
+      // Continue with the upload process even if recording fails
+    }
 
     return NextResponse.json({ 
       message: 'File uploaded successfully',
