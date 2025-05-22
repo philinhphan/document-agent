@@ -2,13 +2,20 @@
 
 import { useChat, Message } from 'ai/react'; // Vercel AI SDK hook
 import ReactMarkdown from 'react-markdown';
-import { useEffect, useRef } from 'react'; // Import useEffect and useRef
+import { useEffect, useRef, useState } from 'react'; // Add useState
+
+// Add interface for suggestions
+interface Suggestion {
+  text: string;
+  type: 'question' | 'response';
+}
 
 export default function Chat() {
   const { messages, input, handleInputChange, handleSubmit, isLoading, error, setMessages } = useChat({
     api: '/api/chat', // Points to our backend route
   });
   const messagesEndRef = useRef<HTMLDivElement>(null); // Create a ref for the scroll target
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]); // Add state for suggestions
 
   const USER_NAME = "Alex"; // Hardcoded user name for MVP
 
@@ -23,6 +30,12 @@ export default function Chat() {
         content: `Hallo ${USER_NAME}! Wie kann ich dir helfen?`,
       };
       setMessages([initialAssistantMessage]);
+      // Set initial suggestions
+      setSuggestions([
+        { text: "Was sind die wichtigsten Aspekte beim Sales, die ich beachten sollte?", type: 'question' },
+        { text: "Kannst du mir Sales-Strategien beschreiben?", type: 'question' },
+        { text: "Ich habe Probleme mit meiner Kommunikation in Sales.", type: 'response' }
+      ]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array ensures this runs only once on mount
@@ -36,6 +49,18 @@ export default function Chat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Function to handle suggestion click
+  const handleSuggestionClick = (suggestion: Suggestion) => {
+    if (suggestion.type === 'question') {
+      // Set the input value to the suggestion text
+      handleInputChange({ target: { value: suggestion.text } } as React.ChangeEvent<HTMLInputElement>);
+    } else {
+      // For response type suggestions, we might want to handle them differently
+      // For now, we'll just set them as input as well
+      handleInputChange({ target: { value: suggestion.text } } as React.ChangeEvent<HTMLInputElement>);
+    }
+  };
 
   return (
     <div className="flex flex-col w-full max-w-2xl mx-auto py-12 px-4">
@@ -65,6 +90,25 @@ export default function Chat() {
             )}
             <div ref={messagesEndRef} /> {/* Invisible element to scroll to */}
         </div>
+
+        {/* Suggestions */}
+        {suggestions.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-2">
+                {suggestions.map((suggestion, index) => (
+                    <button
+                        key={index}
+                        onClick={() => handleSuggestionClick(suggestion)}
+                        className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                            suggestion.type === 'question'
+                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                    >
+                        {suggestion.text}
+                    </button>
+                ))}
+            </div>
+        )}
 
         {/* Error Display */}
         {error && (
