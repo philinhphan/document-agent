@@ -44,13 +44,48 @@ export async function POST(request: NextRequest) {
 
     // Initialize Supabase client
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+      console.error('Missing Supabase environment variables:', {
+        hasUrl: !!process.env.SUPABASE_URL,
+        hasKey: !!process.env.SUPABASE_ANON_KEY
+      });
       throw new Error('Missing Supabase environment variables');
     }
 
+    console.log('Initializing Supabase client with URL:', process.env.SUPABASE_URL);
     const supabaseClient = createClient(
       process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
+      process.env.SUPABASE_ANON_KEY,
+      {
+        auth: {
+          persistSession: false
+        }
+      }
     );
+
+    // Upload file to Supabase Storage
+    console.log('Attempting to upload file to Supabase Storage:', filename);
+    const { data: storageData, error: storageError } = await supabaseClient
+      .storage
+      .from('documents')
+      .upload(filename, buffer, {
+        contentType: 'application/pdf',
+        upsert: false
+      });
+
+    if (storageError) {
+      console.error('Error uploading to Supabase Storage:', {
+        error: storageError,
+        message: storageError.message
+      });
+      throw new Error(`Failed to upload to Supabase Storage: ${storageError.message}`);
+    }
+
+    if (!storageData) {
+      console.error('No storage data returned from Supabase');
+      throw new Error('Failed to upload to Supabase Storage: No data returned');
+    }
+
+    console.log('Successfully uploaded to Supabase Storage:', storageData);
 
     // Record the upload in Supabase
     const { error: uploadError } = await supabaseClient
@@ -62,23 +97,25 @@ export async function POST(request: NextRequest) {
           file_size: file.size,
           mime_type: file.type,
           upload_timestamp: new Date().toISOString(),
-          status: 'uploaded'
+          status: 'uploaded',
+          storage_path: storageData.path
         }
       ]);
 
     if (uploadError) {
       console.error('Error recording upload in Supabase:', uploadError);
-      // Continue with the upload process even if recording fails
+      throw new Error(`Failed to record upload in database: ${uploadError.message}`);
     }
 
     return NextResponse.json({ 
       message: 'File uploaded successfully',
-      filename: filename
+      filename: filename,
+      storage_path: storageData.path
     });
   } catch (error) {
     console.error('Error uploading file:', error);
     return NextResponse.json(
-      { error: 'Error uploading file' },
+      { error: error instanceof Error ? error.message : 'Error uploading file' },
       { status: 500 }
     );
   }
