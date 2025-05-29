@@ -64,7 +64,11 @@ export async function POST(request: NextRequest) {
 
     // Add filename metadata to each document chunk
     docs.forEach(doc => {
-      doc.metadata = { ...doc.metadata, source: filename };
+      doc.metadata = { 
+        ...doc.metadata, 
+        source: filename,
+        page: doc.metadata.page || 'N/A' // Preserve the page number from PDFLoader
+      };
     });
 
     // 2. Split Text
@@ -74,6 +78,13 @@ export async function POST(request: NextRequest) {
     });
     const splitDocs = await splitter.splitDocuments(docs);
     console.log(`Split into ${splitDocs.length} chunks.`);
+
+    // Ensure page numbers are preserved in split documents
+    splitDocs.forEach(doc => {
+      if (!doc.metadata.page) {
+        doc.metadata.page = 'N/A';
+      }
+    });
 
     // 3. Initialize Embeddings
     const embeddings = new OpenAIEmbeddings({

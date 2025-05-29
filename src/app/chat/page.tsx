@@ -3,12 +3,35 @@
 import { useChat, Message } from 'ai/react'; // Vercel AI SDK hook
 import ReactMarkdown from 'react-markdown';
 import { useEffect, useRef, useState } from 'react'; // Add useState
+import SourceCitation from '../components/SourceCitation';
 
 // Add interface for suggestions
 interface Suggestion {
   text: string;
   type: 'question' | 'response';
 }
+
+// Custom component for handling source citations in markdown
+const CitationComponent = ({ children }: { children: string }) => {
+  // Parse the citation text to extract source and page
+  const match = children.match(/\[Source: (.*?), Page (.*?)\]/);
+  if (match) {
+    const [_, source, page] = match;
+    return <SourceCitation source={source} page={page} />;
+  }
+  return <>{children}</>;
+};
+
+// Function to process text and replace citations with components
+const processTextWithCitations = (text: string) => {
+  const parts = text.split(/(\[Source: .*?, Page .*?\])/);
+  return parts.map((part, index) => {
+    if (part.match(/\[Source: .*?, Page .*?\]/)) {
+      return <CitationComponent key={index}>{part}</CitationComponent>;
+    }
+    return <span key={index}>{part}</span>;
+  });
+};
 
 export default function Chat() {
   const { messages, input, handleInputChange, handleSubmit, isLoading, error, setMessages } = useChat({
@@ -65,7 +88,7 @@ export default function Chat() {
   return (
     <div className="flex flex-col w-full max-w-2xl mx-auto py-12 px-4">
         <h1 className="text-2xl font-bold mb-4 text-center">AI Conversational Coach (MVP)</h1>
-        <p className="text-sm text-gray-500 mb-6 text-center">Ask questions about the ingested knowledge resources.</p>
+        <p className="text-sm text-gray-500 mb-6 text-center">Stelle Fragen an deinen AI-Coach zu deinen Sales-Problemen.</p>
 
         {/* Message List */}
         <div className="flex-grow overflow-y-auto space-y-4 mb-4 pr-2 h-[60vh] border rounded-md p-4 bg-gray-50">
@@ -80,7 +103,13 @@ export default function Chat() {
                                 : 'bg-gray-200 text-gray-800'
                         }`}>
                             <div className={m.role === 'assistant' ? 'prose' : ''}>
-                                {m.role === 'user' ? m.content : <ReactMarkdown>{m.content}</ReactMarkdown>}
+                                {m.role === 'user' ? (
+                                    m.content
+                                ) : (
+                                    <div>
+                                      {processTextWithCitations(m.content)}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -122,7 +151,7 @@ export default function Chat() {
             <input
                 className="flex-grow p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={input}
-                placeholder="Ask a question..."
+                placeholder="Stelle eine Frage..."
                 onChange={handleInputChange}
                 disabled={isLoading}
             />
@@ -131,7 +160,7 @@ export default function Chat() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
                 disabled={isLoading || !input.trim()}
             >
-                {isLoading ? 'Sending...' : 'Send'}
+                {isLoading ? 'Wird gesendet...' : 'Senden'}
             </button>
         </form>
     </div>

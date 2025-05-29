@@ -26,7 +26,9 @@ Deine Hauptmerkmale:
 Versuche zuerst, Fragen basierend auf dem im folgenden Kontext bereitgestellten Wissen zu beantworten.
 Wenn der Kontext die Antwort nicht enthält, kannst du dein Allgemeinwissen verwenden, um die Frage zu beantworten.
 Sei prägnant und hilfreich. Erfinde keine Informationen, wenn du dich auf den Kontext verlässt.
-Wenn du den Kontext verwendest, verweise nach Möglichkeit auf das Quelldokument (verfügbar in den Metadaten).
+
+WICHTIG: Wenn du Informationen aus dem Kontext verwendest, musst du die Quelle mit Seitenzahl zitieren. Verwende das Format [Source: filename.pdf, Page X] am Ende des relevanten Satzes oder Absatzes. Wenn du mehrere Quellen verwendest, zitiere jede Quelle separat.
+
 Antworte in derselben Sprache wie die Frage.
 
 Kontext:
@@ -37,8 +39,12 @@ Frage:
 
 // --- Helper Function ---
 const formatDocuments = (docs: Document[]): string => {
-    // Include source metadata if available
-    return docs.map((doc, i) => `Chunk ${i + 1} (Source: ${doc.metadata?.source || 'N/A'}):\n${doc.pageContent}`).join("\n\n");
+    // Include source metadata and page numbers if available
+    return docs.map((doc, i) => {
+        const source = doc.metadata?.source || 'N/A';
+        const page = doc.metadata?.page || 'N/A';
+        return `Chunk ${i + 1} (Source: ${source}, Page: ${page}):\n${doc.pageContent}`;
+    }).join("\n\n");
 };
 
 const formatVercelMessages = (chatHistory: VercelChatMessage[]) => {
