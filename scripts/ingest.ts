@@ -12,7 +12,7 @@ const ingestData = async () => {
     const pdfPath = path.resolve(__dirname, '../data/sample-doc.pdf'); // Path to your PDF
     console.log(`Loading PDF from: ${pdfPath}`);
 
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY || !process.env.OPENAI_API_KEY) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || !process.env.OPENAI_API_KEY) {
         console.error("Missing Supabase or OpenAI environment variables.");
         process.exit(1);
     }
@@ -51,8 +51,8 @@ const ingestData = async () => {
         // Use ANON key for client-side vector store operations if RLS allows
         // Use SERVICE_ROLE key if you need admin privileges for insertion
         const supabaseClient = createClient(
-            process.env.SUPABASE_URL!,
-            process.env.SUPABASE_ANON_KEY! // Or use SUPABASE_SERVICE_ROLE_KEY if needed
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! // Or use SUPABASE_SERVICE_ROLE_KEY if needed
         );
 
         // 5. Create Vector Store and Add Documents

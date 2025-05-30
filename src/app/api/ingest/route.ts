@@ -3,7 +3,7 @@ import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/utils/supabase/server";
 import path from 'path';
 
 export async function POST(request: NextRequest) {
@@ -20,23 +20,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY || !process.env.OPENAI_API_KEY) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || !process.env.OPENAI_API_KEY) {
       return NextResponse.json(
         { error: 'Missing environment variables' },
         { status: 500 }
       );
     }
 
-    const supabaseClient = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
-    );
+    const supabase = await createClient()
 
     // Update status to processing
-    await supabaseClient
+    const { error } = await supabase
       .from('document_uploads')
       .update({ status: 'processing' })
-      .eq('filename', filename);
+      .eq('filename', filename)
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to update status' },
+        { status: 500 }
+      );
+    }
 
     const pdfPath = path.join(process.cwd(), 'data', filename);
     console.log(`Processing PDF from: ${pdfPath}`);
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
     
     if (docs.length === 0) {
       // Update status to failed
-      await supabaseClient
+      await supabase
         .from('document_uploads')
         .update({ 
           status: 'failed',
@@ -95,13 +99,13 @@ export async function POST(request: NextRequest) {
     // 5. Create Vector Store and Add Documents
     console.log("Adding documents to Supabase Vector Store...");
     await SupabaseVectorStore.fromDocuments(splitDocs, embeddings, {
-      client: supabaseClient,
+      client: supabase,
       tableName: 'documents',
       queryName: 'match_documents',
     });
 
     // Update status to completed
-    await supabaseClient
+    await supabase
       .from('document_uploads')
       .update({ 
         status: 'completed',
@@ -120,8 +124,8 @@ export async function POST(request: NextRequest) {
     // Update status to failed
     if (filename) {
       const supabaseClient = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_ANON_KEY!
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       );
       
       await supabaseClient

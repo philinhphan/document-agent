@@ -43,18 +43,18 @@ export async function POST(request: NextRequest) {
     await writeFile(filePath, buffer);
 
     // Initialize Supabase client
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       console.error('Missing Supabase environment variables:', {
-        hasUrl: !!process.env.SUPABASE_URL,
-        hasKey: !!process.env.SUPABASE_ANON_KEY
+        hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        hasKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
       });
       throw new Error('Missing Supabase environment variables');
     }
 
-    console.log('Initializing Supabase client with URL:', process.env.SUPABASE_URL);
+    console.log('Initializing Supabase client with URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
     const supabaseClient = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY,
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       {
         auth: {
           persistSession: false

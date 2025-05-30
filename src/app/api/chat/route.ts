@@ -73,14 +73,14 @@ export async function POST(req: NextRequest) {
             return new Response(JSON.stringify({ error: "No message content found" }), { status: 400 });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY || !process.env.OPENAI_API_KEY) {
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || !process.env.OPENAI_API_KEY) {
             return new Response(JSON.stringify({ error: "Missing environment variables" }), { status: 500 });
         }
 
         // --- Initialize Clients and Embeddings ---
         const supabaseClient = createClient(
-            process.env.SUPABASE_URL!,
-            process.env.SUPABASE_ANON_KEY!
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         );
 
 
