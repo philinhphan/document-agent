@@ -7,13 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "ingest": "tsx scripts/ingest.ts"
+    "ingest": "tsx scripts/ingest.ts",
+    "update-types": "npx supabase gen types --lang=typescript --project-id \"ppwwecbfgmqjstuwediy\" > src/lib/types/database.types.ts"
   },
   "dependencies": {
     "@langchain/community": "^0.3.43",
     "@langchain/core": "^0.3.53",
     "@langchain/openai": "^0.5.10",
-    "@supabase/supabase-js": "^2.49.4",
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.49.8",
     "ai": "^4.3.11",
     "langchain": "^0.3.24",
     "next": "15.3.1",
