@@ -29,6 +29,22 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient()
 
+    // Get the document ID for this filename
+    const { data: document, error: docError } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('filename', filename)
+      .single();
+
+    if (docError || !document) {
+      return NextResponse.json(
+        { error: 'Document not found in database' },
+        { status: 404 }
+      );
+    }
+
+    const documentId = document.id;
+
     // Update status to processing
     const { error } = await supabase
       .from('documents')
@@ -104,6 +120,18 @@ export async function POST(request: NextRequest) {
       queryName: 'match_documents',
     });
 
+    // 6. Update all chunks for this document with the document_id
+    console.log("Updating chunks with document_id...");
+    const { error: updateError } = await supabase
+      .from('document_chunks')
+      .update({ document_id: documentId })
+      .like('metadata->>source', filename);
+
+    if (updateError) {
+      console.error('Error updating chunks with document_id:', updateError);
+      // Don't fail the whole process for this, just log it
+    }
+
     // Update status to completed
     await supabase
       .from('documents')
@@ -123,10 +151,7 @@ export async function POST(request: NextRequest) {
     
     // Update status to failed
     if (filename) {
-      const supabaseClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
+      const supabaseClient = await createClient();
       
       await supabaseClient
         .from('documents')

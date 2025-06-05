@@ -55,6 +55,44 @@ const ingestData = async () => {
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! // Or use SUPABASE_SERVICE_ROLE_KEY if needed
         );
 
+        // 4.5. Ensure document record exists
+        const filename = path.basename(pdfPath);
+        console.log(`Checking for document record: ${filename}`);
+        
+        let documentId: string;
+        const { data: existingDoc } = await supabaseClient
+            .from('documents')
+            .select('id')
+            .eq('filename', filename)
+            .single();
+
+        if (existingDoc) {
+            documentId = existingDoc.id;
+            console.log(`Found existing document with ID: ${documentId}`);
+        } else {
+            // Create document record
+            console.log('Creating new document record...');
+            const { data: newDoc, error: createError } = await supabaseClient
+                .from('documents')
+                .insert({
+                    filename: filename,
+                    original_name: filename,
+                    file_size: 0, // Unknown for standalone script
+                    mime_type: 'application/pdf',
+                    upload_timestamp: new Date().toISOString(),
+                    status: 'processing'
+                })
+                .select('id')
+                .single();
+
+            if (createError || !newDoc) {
+                throw new Error(`Failed to create document record: ${createError?.message}`);
+            }
+
+            documentId = newDoc.id;
+            console.log(`Created new document with ID: ${documentId}`);
+        }
+
         // 5. Create Vector Store and Add Documents
         console.log("Adding documents to Supabase Vector Store...");
         await SupabaseVectorStore.fromDocuments(splitDocs, embeddings, {
@@ -62,6 +100,28 @@ const ingestData = async () => {
             tableName: 'document_chunks',      // Match your table name
             queryName: 'match_documents', // Match your function name
         });
+
+        // 6. Update chunks with document_id
+        console.log("Updating chunks with document_id...");
+        const { error: updateError } = await supabaseClient
+            .from('document_chunks')
+            .update({ document_id: documentId })
+            .like('metadata->>source', filename);
+
+        if (updateError) {
+            console.error('Error updating chunks with document_id:', updateError);
+        } else {
+            console.log(`Successfully linked ${splitDocs.length} chunks to document ${documentId}`);
+        }
+
+        // Update document status to completed
+        await supabaseClient
+            .from('documents')
+            .update({ 
+                status: 'completed',
+                chunks_processed: splitDocs.length
+            })
+            .eq('id', documentId);
 
         console.log("✅ Data ingestion complete!");
 

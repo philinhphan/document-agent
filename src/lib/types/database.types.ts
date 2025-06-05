@@ -12,23 +12,34 @@ export type Database = {
       document_chunks: {
         Row: {
           content: string | null
+          document_id: string | null
           embedding: string | null
           id: number
           metadata: Json | null
         }
         Insert: {
           content?: string | null
+          document_id?: string | null
           embedding?: string | null
           id?: number
           metadata?: Json | null
         }
         Update: {
           content?: string | null
+          document_id?: string | null
           embedding?: string | null
           id?: number
           metadata?: Json | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_document_chunks_document_id"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       documents: {
         Row: {
