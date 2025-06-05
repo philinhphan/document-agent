@@ -3,7 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function KnowledgeManagement() {
+interface KnowledgeManagementPageProps {
+  params: { orgUrl: string };
+}
+
+export default function KnowledgeManagement({ params }: KnowledgeManagementPageProps) {
+  const { orgUrl } = params;
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{
@@ -30,6 +35,7 @@ export default function KnowledgeManagement() {
       // First, upload the file
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('orgUrl', orgUrl);
 
       const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
@@ -48,7 +54,7 @@ export default function KnowledgeManagement() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ filename }),
+        body: JSON.stringify({ filename, orgUrl }),
       });
 
       if (!ingestResponse.ok) {
@@ -75,7 +81,7 @@ export default function KnowledgeManagement() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Knowledge Management</h1>
         <button
-          onClick={() => router.push('/chat')}
+          onClick={() => router.push(`/${orgUrl}/chat`)}
           className="px-4 py-2 text-sm bg-gray-800 text-white hover:bg-gray-700 rounded-md transition-colors"
         >
           Back to Chat

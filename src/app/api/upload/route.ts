@@ -8,6 +8,7 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const orgUrl = formData.get('orgUrl') as string;
 
     if (!file) {
       return NextResponse.json(
@@ -87,6 +88,20 @@ export async function POST(request: NextRequest) {
 
     console.log('Successfully uploaded to Supabase Storage:', storageData);
 
+    // Get organization ID if orgUrl is provided
+    let orgId = null;
+    if (orgUrl) {
+      const { data: org } = await supabaseClient
+        .from('orgs')
+        .select('id')
+        .eq('url', orgUrl)
+        .single();
+      
+      if (org) {
+        orgId = org.id;
+      }
+    }
+
     // Record the upload in Supabase
     const { error: uploadError } = await supabaseClient
       .from('documents')
@@ -98,7 +113,8 @@ export async function POST(request: NextRequest) {
           mime_type: file.type,
           upload_timestamp: new Date().toISOString(),
           status: 'uploaded',
-          storage_path: storageData.path
+          storage_path: storageData.path,
+          org_id: orgId
         }
       ]);
 

@@ -31,6 +31,8 @@ WICHTIG: Wenn du Informationen aus dem Kontext verwendest, musst du die Quelle m
 
 Antworte in derselben Sprache wie die Frage.
 
+{orgContext}
+
 Kontext:
 {context}
 
@@ -66,6 +68,7 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const messages = body.messages ?? [];
+        const orgUrl = body.orgUrl;
         // const formattedPreviousMessages = formatVercelMessages(messages.slice(0, -1)); // Use if needing history (more complex)
         const currentMessageContent = messages[messages.length - 1]?.content;
 
@@ -82,6 +85,24 @@ export async function POST(req: NextRequest) {
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         );
+
+        // Get organization context if orgUrl is provided
+        let orgContext = '';
+        if (orgUrl) {
+            const { data: org } = await supabaseClient
+                .from('orgs')
+                .select('displayName, llmCompanyContext, industry, customerSegments')
+                .eq('url', orgUrl)
+                .single();
+            
+            if (org) {
+                orgContext = `\n\nOrganization Context:
+- Company: ${org.displayName}
+- Industry: ${org.industry || 'Not specified'}
+- Customer Segments: ${org.customerSegments || 'Not specified'}
+${org.llmCompanyContext ? `- Additional Context: ${org.llmCompanyContext}` : ''}`;
+            }
+        }
 
 
 
@@ -102,9 +123,12 @@ export async function POST(req: NextRequest) {
             tableName: 'document_chunks',
             queryName: 'match_documents',
         });
+        
+        // Create retriever with organization-specific filtering
         const retriever = vectorStore.asRetriever({
              k: 4, // Retrieve top 4 relevant chunks
              searchType: "similarity", // Use similarity search
+             filter: orgUrl ? { orgUrl: { eq: orgUrl } } : {}, // Filter by organization if provided
         });
 
         // --- Define Prompt and Chain ---
@@ -117,8 +141,10 @@ export async function POST(req: NextRequest) {
                 context: retriever.pipe(formatDocuments),
                 // Pass the question through
                 question: new RunnablePassthrough(),
+                // Pass the organization context
+                orgContext: () => orgContext,
             },
-            prompt,       // Format the prompt with context and question
+            prompt,       // Format the prompt with context, question, and orgContext
             llm,          // Call the LLM
             new StringOutputParser(), // Parse the LLM output to string
         ]);

@@ -3,7 +3,7 @@
 import { useChat, Message } from 'ai/react'; // Vercel AI SDK hook
 import ReactMarkdown from 'react-markdown';
 import { useEffect, useRef, useState } from 'react'; // Add useState
-import SourceCitation from '../components/SourceCitation';
+import SourceCitation from '../../components/SourceCitation';
 
 // Add interface for suggestions
 interface Suggestion {
@@ -33,9 +33,17 @@ const processTextWithCitations = (text: string) => {
   });
 };
 
-export default function Chat() {
+interface ChatPageProps {
+  params: { orgUrl: string };
+}
+
+export default function Chat({ params }: ChatPageProps) {
+  const { orgUrl } = params;
   const { messages, input, handleInputChange, handleSubmit, isLoading, error, setMessages } = useChat({
     api: '/api/chat', // Points to our backend route
+    body: {
+      orgUrl, // Include organization context in API calls
+    },
   });
   const messagesEndRef = useRef<HTMLDivElement>(null); // Create a ref for the scroll target
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]); // Add state for suggestions

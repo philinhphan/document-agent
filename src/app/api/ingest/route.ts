@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   let filename: string | undefined;
   
   try {
-    const { filename: requestFilename } = await request.json();
+    const { filename: requestFilename, orgUrl } = await request.json();
     filename = requestFilename;
 
     if (!filename) {
@@ -28,6 +28,20 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createClient()
+
+    // Get organization information if orgUrl is provided
+    let orgId = null;
+    if (orgUrl) {
+      const { data: org } = await supabase
+        .from('orgs')
+        .select('id, displayName')
+        .eq('url', orgUrl)
+        .single();
+      
+      if (org) {
+        orgId = org.id;
+      }
+    }
 
     // Get the document ID for this filename
     const { data: document, error: docError } = await supabase
@@ -82,12 +96,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Add filename metadata to each document chunk
+    // Add filename and organization metadata to each document chunk
     docs.forEach(doc => {
       doc.metadata = { 
         ...doc.metadata, 
         source: filename,
-        page: doc.metadata.page || 'N/A' // Preserve the page number from PDFLoader
+        page: doc.metadata.page || 'N/A', // Preserve the page number from PDFLoader
+        orgUrl: orgUrl || null,
+        orgId: orgId || null
       };
     });
 
@@ -99,10 +115,16 @@ export async function POST(request: NextRequest) {
     const splitDocs = await splitter.splitDocuments(docs);
     console.log(`Split into ${splitDocs.length} chunks.`);
 
-    // Ensure page numbers are preserved in split documents
+    // Ensure page numbers and organization info are preserved in split documents
     splitDocs.forEach(doc => {
       if (!doc.metadata.page) {
         doc.metadata.page = 'N/A';
+      }
+      if (!doc.metadata.orgUrl && orgUrl) {
+        doc.metadata.orgUrl = orgUrl;
+      }
+      if (!doc.metadata.orgId && orgId) {
+        doc.metadata.orgId = orgId;
       }
     });
 
