@@ -9,7 +9,28 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      document_uploads: {
+      document_chunks: {
+        Row: {
+          content: string | null
+          embedding: string | null
+          id: number
+          metadata: Json | null
+        }
+        Insert: {
+          content?: string | null
+          embedding?: string | null
+          id?: number
+          metadata?: Json | null
+        }
+        Update: {
+          content?: string | null
+          embedding?: string | null
+          id?: number
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
+      documents: {
         Row: {
           chunks_processed: number | null
           created_at: string | null
@@ -48,27 +69,6 @@ export type Database = {
           status?: string
           storage_path?: string | null
           upload_timestamp?: string
-        }
-        Relationships: []
-      }
-      documents: {
-        Row: {
-          content: string | null
-          embedding: string | null
-          id: number
-          metadata: Json | null
-        }
-        Insert: {
-          content?: string | null
-          embedding?: string | null
-          id?: number
-          metadata?: Json | null
-        }
-        Update: {
-          content?: string | null
-          embedding?: string | null
-          id?: number
-          metadata?: Json | null
         }
         Relationships: []
       }
@@ -135,11 +135,17 @@ export type Database = {
     }
     Functions: {
       match_document_chunks: {
-        Args: {
-          query_embedding: string
-          match_threshold: number
-          match_count: number
-        }
+        Args:
+          | {
+              query_embedding: string
+              match_threshold: number
+              match_count: number
+            }
+          | {
+              query_embedding: string
+              match_threshold?: number
+              match_count?: number
+            }
         Returns: {
           id: string
           document_id: string

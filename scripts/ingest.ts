@@ -59,7 +59,7 @@ const ingestData = async () => {
         console.log("Adding documents to Supabase Vector Store...");
         await SupabaseVectorStore.fromDocuments(splitDocs, embeddings, {
             client: supabaseClient,
-            tableName: 'documents',      // Match your table name
+            tableName: 'document_chunks',      // Match your table name
             queryName: 'match_documents', // Match your function name
         });
 

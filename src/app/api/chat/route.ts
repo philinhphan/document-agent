@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
         // --- Initialize Vector Store and Retriever ---
         const vectorStore = new SupabaseVectorStore(embeddings, {
             client: supabaseClient,
-            tableName: 'documents',
+            tableName: 'document_chunks',
             queryName: 'match_documents',
         });
         const retriever = vectorStore.asRetriever({

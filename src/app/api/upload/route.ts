@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     // Record the upload in Supabase
     const { error: uploadError } = await supabaseClient
-      .from('document_uploads')
+      .from('documents')
       .insert([
         {
           filename: filename,

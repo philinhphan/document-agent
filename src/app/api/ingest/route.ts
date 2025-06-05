@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     // Update status to processing
     const { error } = await supabase
-      .from('document_uploads')
+      .from('documents')
       .update({ status: 'processing' })
       .eq('filename', filename)
 
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     if (docs.length === 0) {
       // Update status to failed
       await supabase
-        .from('document_uploads')
+        .from('documents')
         .update({ 
           status: 'failed',
           error_message: 'No content found in PDF'
@@ -100,13 +100,13 @@ export async function POST(request: NextRequest) {
     console.log("Adding documents to Supabase Vector Store...");
     await SupabaseVectorStore.fromDocuments(splitDocs, embeddings, {
       client: supabase,
-      tableName: 'documents',
+      tableName: 'document_chunks',
       queryName: 'match_documents',
     });
 
     // Update status to completed
     await supabase
-      .from('document_uploads')
+      .from('documents')
       .update({ 
         status: 'completed',
         chunks_processed: splitDocs.length
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       );
       
       await supabaseClient
-        .from('document_uploads')
+        .from('documents')
         .update({ 
           status: 'failed',
           error_message: error instanceof Error ? error.message : 'Unknown error during processing'
