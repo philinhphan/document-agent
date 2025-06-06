@@ -125,20 +125,45 @@ ${org.llmCompanyContext ? `- Additional Context: ${org.llmCompanyContext}` : ''}
         });
         
         // Create retriever with organization-specific filtering
+        // Note: Based on testing, the correct filter format is { orgUrl: value }
         const retriever = vectorStore.asRetriever({
              k: 4, // Retrieve top 4 relevant chunks
              searchType: "similarity", // Use similarity search
-             filter: orgUrl ? { orgUrl: { eq: orgUrl } } : {}, // Filter by organization if provided
+             filter: orgUrl ? { orgUrl: orgUrl } : {}, // Filter by organization using direct metadata key
         });
+
+        // Debug: Log organization context
+        console.log('Chat API - Organization URL:', orgUrl);
 
         // --- Define Prompt and Chain ---
         const prompt = PromptTemplate.fromTemplate(SYSTEM_TEMPLATE);
 
+        // Create context retriever with organization filtering
+        const getContextWithOrgFiltering = async (question: string) => {
+            try {
+                const docs = await retriever.invoke(question);
+                console.log(`Chat API - Retrieved ${docs.length} documents for org: ${orgUrl}`);
+                
+                // Debug only if no documents found
+                if (docs.length === 0 && orgUrl) {
+                    const allRetriever = vectorStore.asRetriever({ k: 3, searchType: "similarity" });
+                    const allDocs = await allRetriever.invoke(question);
+                    const availableOrgs = [...new Set(allDocs.map(doc => doc.metadata?.orgUrl))];
+                    console.log(`Chat API - No docs for ${orgUrl}. Available orgs:`, availableOrgs);
+                }
+                
+                return formatDocuments(docs);
+            } catch (error) {
+                console.error('Chat API - Error retrieving documents:', error);
+                return "No relevant documents found.";
+            }
+        };
+
         // RAG Chain definition using LangChain Expression Language (LCEL)
         const ragChain = RunnableSequence.from([
             {
-                // Retrieve context based on the question
-                context: retriever.pipe(formatDocuments),
+                // Retrieve context with custom org filtering logic
+                context: async (input: string) => await getContextWithOrgFiltering(input),
                 // Pass the question through
                 question: new RunnablePassthrough(),
                 // Pass the organization context

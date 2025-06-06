@@ -12,6 +12,8 @@
     "migrate:add-document-id": "tsx scripts/run-migration.ts",
     "migrate:populate-document-id": "tsx scripts/populate-document-id.ts",
     "fix-migration": "tsx scripts/fix-migration.ts",
+    "debug:vector-search": "tsx scripts/debug-vector-search.ts",
+    "test:org-chat": "tsx scripts/test-org-chat.ts",
     "update-types": "npx supabase gen types --lang=typescript --project-id \"ppwwecbfgmqjstuwediy\" > src/lib/types/database.types.ts",
     "update-types-alt": "tsx scripts/update-types.ts",
     "update-types-manual": "echo 'Go to your Supabase Dashboard > API Docs > TypeScript tab and copy the types manually'"

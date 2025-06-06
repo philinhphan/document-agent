@@ -107,6 +107,9 @@ export async function POST(request: NextRequest) {
       };
     });
 
+    console.log('Ingest API - Organization Info:', { orgUrl, orgId });
+    console.log('Ingest API - Sample document metadata:', docs[0]?.metadata);
+
     // 2. Split Text
     const splitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
@@ -127,6 +130,9 @@ export async function POST(request: NextRequest) {
         doc.metadata.orgId = orgId;
       }
     });
+
+    console.log('Ingest API - Split documents count:', splitDocs.length);
+    console.log('Ingest API - Sample split document metadata:', splitDocs[0]?.metadata);
 
     // 3. Initialize Embeddings
     const embeddings = new OpenAIEmbeddings({
