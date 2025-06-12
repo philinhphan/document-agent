@@ -28,6 +28,7 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
   }>({ type: null, message: '' });
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const router = useRouter();
 
   // Fetch documents on component mount
@@ -114,6 +115,40 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
     }
   };
 
+  const handleDeleteDocument = async (documentId: string, documentName: string) => {
+    if (!confirm(`Are you sure you want to delete "${documentName}"? This action cannot be undone and will remove the document from the knowledge base.`)) {
+      return;
+    }
+
+    try {
+      setDeletingDocumentId(documentId);
+      
+      const response = await fetch(`/api/documents?documentId=${documentId}&orgUrl=${orgUrl}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Remove document from local state
+        setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+        setUploadStatus({
+          type: 'success',
+          message: 'Document deleted successfully!',
+        });
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete document');
+      }
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      setUploadStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to delete document',
+      });
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -192,6 +227,9 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Chunks
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -234,6 +272,31 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {doc.chunks_processed || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <button
+                        onClick={() => handleDeleteDocument(doc.id, doc.original_name)}
+                        disabled={deletingDocumentId === doc.id}
+                        className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Delete document from knowledge base"
+                      >
+                        {deletingDocumentId === doc.id ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-red-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete
+                          </>
+                        )}
+                      </button>
                     </td>
                   </tr>
                 ))}
