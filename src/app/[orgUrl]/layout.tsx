@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 
 interface OrgLayoutProps {
   children: ReactNode;
-  params: { orgUrl: string };
+  params: Promise<{ orgUrl: string }>;
 }
 
 // Helper function to validate organization
@@ -38,7 +38,7 @@ async function validateOrganization(orgUrl: string) {
 }
 
 export default async function OrgLayout({ children, params }: OrgLayoutProps) {
-  const { orgUrl } = params;
+  const { orgUrl } = await params;
   
   // Validate that the organization exists
   const org = await validateOrganization(orgUrl);

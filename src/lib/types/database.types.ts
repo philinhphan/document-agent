@@ -38,7 +38,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "documents"
             referencedColumns: ["id"]
-          }
+          },
         ]
       }
       documents: {
@@ -50,6 +50,7 @@ export type Database = {
           filename: string
           id: string
           mime_type: string
+          org_id: string | null
           original_name: string
           status: string
           storage_path: string | null
@@ -63,6 +64,7 @@ export type Database = {
           filename: string
           id?: string
           mime_type: string
+          org_id?: string | null
           original_name: string
           status: string
           storage_path?: string | null
@@ -76,12 +78,21 @@ export type Database = {
           filename?: string
           id?: string
           mime_type?: string
+          org_id?: string | null
           original_name?: string
           status?: string
           storage_path?: string | null
           upload_timestamp?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "documents_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orgs: {
         Row: {
