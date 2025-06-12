@@ -33,9 +33,16 @@ export async function POST(request: NextRequest) {
       console.error('Error creating data directory:', error);
     }
 
-    // Generate unique filename
+    // Generate unique filename with sanitization for Supabase Storage
     const timestamp = Date.now();
-    const filename = `${timestamp}-${file.name}`;
+    const sanitizedFileName = file.name
+      .normalize('NFD') // Normalize unicode characters
+      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics (accents)
+      .replace(/[^a-zA-Z0-9.\-_]/g, '_') // Replace non-alphanumeric chars with underscore
+      .replace(/_{2,}/g, '_') // Replace multiple underscores with single
+      .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+    
+    const filename = `${timestamp}-${sanitizedFileName}`;
     const filePath = path.join(dataDir, filename);
 
     // Convert file to buffer and save
