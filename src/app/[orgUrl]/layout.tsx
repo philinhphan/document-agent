@@ -68,13 +68,13 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
             <nav className="flex space-x-4">
               <a 
                 href={`/${orgUrl}/chat`}
-                className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                className="text-gray-800 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
               >
                 Chat
               </a>
               <a 
                 href={`/${orgUrl}/manage/knowledge`}
-                className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                className="text-gray-800 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
               >
                 Knowledge
               </a>

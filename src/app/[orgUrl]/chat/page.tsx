@@ -22,15 +22,81 @@ const CitationComponent = ({ children }: { children: string }) => {
   return <>{children}</>;
 };
 
-// Function to process text and replace citations with components
-const processTextWithCitations = (text: string) => {
-  const parts = text.split(/(\[Source: .*?, Page .*?\])/);
-  return parts.map((part, index) => {
-    if (part.match(/\[Source: .*?, Page .*?\]/)) {
-      return <CitationComponent key={index}>{part}</CitationComponent>;
-    }
-    return <span key={index}>{part}</span>;
-  });
+// Component that renders markdown and handles citations
+const MarkdownWithCitations = ({ content }: { content: string }) => {
+  // Check if content has citations
+  const hasCitations = /\[Source: .*?, Page .*?\]/.test(content);
+  
+  if (!hasCitations) {
+    // No citations, render markdown normally
+    return <ReactMarkdown>{content}</ReactMarkdown>;
+  }
+  
+  // If there are citations, we need to process them
+  // Split content at paragraph level to preserve list structure
+  const paragraphs = content.split(/\n\n+/);
+  
+  return (
+    <div>
+      {paragraphs.map((paragraph, paragraphIndex) => {
+        // Check if this paragraph contains citations
+        const citationRegex = /\[Source: .*?, Page .*?\]/g;
+        const citations = paragraph.match(citationRegex);
+        
+        if (!citations) {
+          // No citations in this paragraph, render as markdown
+          return (
+            <ReactMarkdown key={paragraphIndex}>
+              {paragraph}
+            </ReactMarkdown>
+          );
+        }
+        
+        // This paragraph has citations, process them
+        const parts = paragraph.split(/(\[Source: .*?, Page .*?\])/);
+        const hasListItems = /^\s*[\d+\-\*]/.test(paragraph);
+        
+        if (hasListItems) {
+          // This is a list, render the whole paragraph as markdown first
+          // then process citations in a second pass
+          const citationFreeContent = paragraph.replace(/\[Source: .*?, Page .*?\]/g, '');
+          
+          return (
+            <div key={paragraphIndex}>
+              <ReactMarkdown>{citationFreeContent}</ReactMarkdown>
+              {citations.map((citation, citIndex) => (
+                <CitationComponent key={`${paragraphIndex}-${citIndex}`}>
+                  {citation}
+                </CitationComponent>
+              ))}
+            </div>
+          );
+        } else {
+          // Regular paragraph with citations
+          return (
+            <div key={paragraphIndex}>
+              {parts.map((part, partIndex) => {
+                if (part.match(/\[Source: .*?, Page .*?\]/)) {
+                  return (
+                    <CitationComponent key={`${paragraphIndex}-${partIndex}`}>
+                      {part}
+                    </CitationComponent>
+                  );
+                } else if (part.trim()) {
+                  return (
+                    <ReactMarkdown key={`${paragraphIndex}-${partIndex}`}>
+                      {part}
+                    </ReactMarkdown>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          );
+        }
+      })}
+    </div>
+  );
 };
 
 interface ChatPageProps {
@@ -95,8 +161,8 @@ export default function Chat({ params }: ChatPageProps) {
 
   return (
     <div className="flex flex-col w-full max-w-2xl mx-auto py-12 px-4">
-        <h1 className="text-2xl font-bold mb-4 text-center">AI Conversational Coach (MVP)</h1>
-        <p className="text-sm text-gray-500 mb-6 text-center">Stelle Fragen an deinen AI-Coach zu deinen Sales-Problemen.</p>
+        <h1 className="text-2xl font-bold mb-4 text-center text-gray-900">AI Conversational Coach (MVP)</h1>
+        <p className="text-sm text-gray-700 mb-6 text-center">Stelle Fragen an deinen AI-Coach zu deinen Sales-Problemen.</p>
 
         {/* Message List */}
         <div className="flex-grow overflow-y-auto space-y-4 mb-4 pr-2 h-[60vh] border rounded-md p-4 bg-gray-50">
@@ -110,13 +176,11 @@ export default function Chat({ params }: ChatPageProps) {
                                 ? 'bg-blue-500 text-white'
                                 : 'bg-gray-200 text-gray-800'
                         }`}>
-                            <div className={m.role === 'assistant' ? 'prose' : ''}>
+                            <div className={m.role === 'assistant' ? 'prose prose-sm max-w-none' : ''}>
                                 {m.role === 'user' ? (
                                     m.content
                                 ) : (
-                                    <div>
-                                      {processTextWithCitations(m.content)}
-                                    </div>
+                                    <MarkdownWithCitations content={m.content} />
                                 )}
                             </div>
                         </div>

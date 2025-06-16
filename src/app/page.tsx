@@ -40,7 +40,7 @@ export default async function HomePage() {
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             AI Conversational Coach
           </h1>
-          <p className="text-xl text-gray-600">
+          <p className="text-xl text-gray-700">
             Select your organization to get started
           </p>
         </div>
@@ -66,7 +66,7 @@ export default async function HomePage() {
                       {org.displayName}
                     </h3>
                     {org.industry && (
-                      <p className="text-sm text-gray-500">{org.industry}</p>
+                      <p className="text-sm text-gray-600">{org.industry}</p>
                     )}
                   </div>
                 </div>
