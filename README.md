@@ -1,183 +1,298 @@
-# Supabase CLI
+# 🤖 AI Conversational Coach
 
-[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
-](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
+An intelligent document assistant platform built for hackathon that enables organizations to upload PDF documents, extract knowledge, and interact with an AI-powered conversational coach. Built with Next.js, LangChain, and Supabase.
 
-[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
+![Next.js](https://img.shields.io/badge/Next.js-15.3.1-black?style=flat-square&logo=next.js)
+![React](https://img.shields.io/badge/React-19.0.0-blue?style=flat-square&logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square&logo=typescript)
+![LangChain](https://img.shields.io/badge/LangChain-0.3-green?style=flat-square)
 
-This repository contains all the functionality for Supabase CLI.
+## ✨ Key Features
 
-- [x] Running Supabase locally
-- [x] Managing database migrations
-- [x] Creating and deploying Supabase Functions
-- [x] Generating types directly from your database schema
-- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
+### 📚 Multi-Tenant Document Management
+- **Organization-based isolation**: Each organization has its own knowledge base
+- **PDF Upload & Processing**: Upload PDF documents that are automatically chunked and embedded
+- **Document Status Tracking**: Monitor upload, processing, and completion status
+- **Safe Document Deletion**: Remove documents from the knowledge base with confirmation
 
-## Getting started
+### 💬 Intelligent Chat Interface
+- **RAG-Powered Conversations**: Chat with your documents using Retrieval-Augmented Generation
+- **Source Citations**: Every answer includes clickable source citations with page numbers
+- **German Language Support**: Localized interface for German-speaking users
+- **Smart Suggestions**: Context-aware question suggestions to guide conversations
+- **Markdown Rendering**: Rich text formatting for assistant responses
 
-### Install the CLI
+### 📄 Interactive PDF Viewer
+- **Split-Screen View**: Chat and view source documents side-by-side
+- **Smart Highlighting**: Automatically highlights relevant text passages in PDFs
+- **Page Navigation**: Jump directly to cited pages
+- **Fallback Chunks**: Shows relevant text chunks when exact highlighting isn't available
 
-Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
+### 📊 Executive Knowledge Dashboard
+- **Executive Brief Generation**: AI-generated summaries of your document collection
+- **Key Findings Extraction**: Automated identification of important insights
+- **Risk & Alert Detection**: Highlights potential issues found in documents
+- **Recommended Actions**: Actionable next steps based on document analysis
+- **Document Outline**: Interactive hierarchical structure of document content
+- **Coverage Metrics**: Track processing progress for sections and images
+- **Export Options**: Export executive briefs to Markdown or PDF
+
+### 🔍 Advanced Document Understanding
+- **Semantic Search**: Vector-based similarity search using OpenAI embeddings
+- **Confidence Scoring**: Each outline section has confidence levels (high/medium/low)
+- **Multi-Modal Support**: Handles text, images, and tables in documents
+- **Citation Tracking**: Maintains source and page references for all extracted information
+
+## 🏗️ Architecture
+
+### Tech Stack
+- **Frontend**: Next.js 15 with React 19, Tailwind CSS
+- **AI/ML**: LangChain, OpenAI GPT-4, OpenAI Embeddings
+- **Database**: Supabase (PostgreSQL + pgvector)
+- **PDF Processing**: pdf-parse, pdfjs-dist, react-pdf
+- **Streaming**: Vercel AI SDK for real-time chat responses
+
+### Project Structure
+```
+src/
+├── app/
+│   ├── [orgUrl]/
+│   │   ├── chat/                 # Chat interface
+│   │   ├── manage/knowledge/     # Document management
+│   │   └── components/           # Shared components
+│   └── api/
+│       ├── chat/                 # RAG chat endpoint
+│       ├── upload/               # File upload
+│       ├── ingest/               # Document processing
+│       ├── documents/            # Document CRUD
+│       ├── highlight/            # PDF highlighting
+│       ├── overview/             # Executive summaries
+│       ├── chunks/               # Chunk retrieval
+│       └── pdf/                  # PDF serving
+└── lib/
+    └── types/                    # TypeScript definitions
+```
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 20+
+- Supabase account
+- OpenAI API key
+
+### Environment Setup
+Create a `.env.local` file:
 
 ```bash
-npm i supabase --save-dev
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# OpenAI
+OPENAI_API_KEY=your_openai_api_key
 ```
 
-To install the beta release channel:
+### Database Setup
+Your Supabase database needs the following tables:
+
+```sql
+-- Enable pgvector extension
+create extension if not exists vector;
+
+-- Organizations
+create table orgs (
+  id uuid primary key default gen_random_uuid(),
+  url text unique not null,
+  displayName text,
+  iconUrl text,
+  industry text,
+  created_at timestamp default now()
+);
+
+-- Documents
+create table documents (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid references orgs(id),
+  filename text not null,
+  original_name text,
+  file_size bigint,
+  status text default 'uploaded',
+  upload_timestamp timestamp default now(),
+  chunks_processed integer,
+  error_message text
+);
+
+-- Document chunks (embeddings)
+create table document_chunks (
+  id bigserial primary key,
+  org_id uuid references orgs(id),
+  document_id uuid references documents(id),
+  chunk_number integer,
+  text text,
+  embedding vector(1536),
+  metadata jsonb,
+  created_at timestamp default now()
+);
+
+-- Create index for vector similarity search
+create index on document_chunks using ivfflat (embedding vector_cosine_ops);
+```
+
+### Installation
 
 ```bash
-npm i supabase@beta --save-dev
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
 ```
 
-When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
+Visit `http://localhost:3000` to see the application.
 
-```
-NODE_OPTIONS=--no-experimental-fetch yarn add supabase
-```
+## 📖 Usage
 
-> **Note**
-For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
+### 1. Organization Selection
+- Navigate to the home page
+- Select your organization from the list
+- Organizations are pre-configured in the Supabase `orgs` table
 
-<details>
-  <summary><b>macOS</b></summary>
+### 2. Upload Documents
+1. Navigate to **Manage Knowledge** from the chat page
+2. Switch to the **Upload** tab
+3. Select a PDF file
+4. Click "Upload and Process"
+5. The document will be:
+   - Uploaded to Supabase Storage
+   - Split into semantic chunks
+   - Embedded using OpenAI embeddings
+   - Stored in the vector database
 
-  Available via [Homebrew](https://brew.sh). To install:
+### 3. Chat with Documents
+1. Type questions in German or English
+2. The AI retrieves relevant document chunks
+3. Generates contextual answers with source citations
+4. Click on citations to view the source in the PDF viewer
 
-  ```sh
-  brew install supabase/tap/supabase
-  ```
+### 4. View Executive Dashboard
+1. Navigate to **Manage Knowledge**
+2. View the **Overview** tab for:
+   - Executive brief summary
+   - Key findings with citations
+   - Identified risks and alerts
+   - Recommended actions
+   - Document outline and structure
+   - Coverage metrics
 
-  To install the beta release channel:
-  
-  ```sh
-  brew install supabase/tap/supabase-beta
-  brew link --overwrite supabase-beta
-  ```
-  
-  To upgrade:
+### 5. Export Reports
+- Click **Export Markdown** to download as .md file
+- Click **Print / PDF** to generate a printable version
 
-  ```sh
-  brew upgrade supabase
-  ```
-</details>
-
-<details>
-  <summary><b>Windows</b></summary>
-
-  Available via [Scoop](https://scoop.sh). To install:
-
-  ```powershell
-  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
-  scoop install supabase
-  ```
-
-  To upgrade:
-
-  ```powershell
-  scoop update supabase
-  ```
-</details>
-
-<details>
-  <summary><b>Linux</b></summary>
-
-  Available via [Homebrew](https://brew.sh) and Linux packages.
-
-  #### via Homebrew
-
-  To install:
-
-  ```sh
-  brew install supabase/tap/supabase
-  ```
-
-  To upgrade:
-
-  ```sh
-  brew upgrade supabase
-  ```
-
-  #### via Linux packages
-
-  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
-
-  ```sh
-  sudo apk add --allow-untrusted <...>.apk
-  ```
-
-  ```sh
-  sudo dpkg -i <...>.deb
-  ```
-
-  ```sh
-  sudo rpm -i <...>.rpm
-  ```
-
-  ```sh
-  sudo pacman -U <...>.pkg.tar.zst
-  ```
-</details>
-
-<details>
-  <summary><b>Other Platforms</b></summary>
-
-  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
-
-  ```sh
-  go install github.com/supabase/cli@latest
-  ```
-
-  Add a symlink to the binary in `$PATH` for easier access:
-
-  ```sh
-  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
-  ```
-
-  This works on other non-standard Linux distros.
-</details>
-
-<details>
-  <summary><b>Community Maintained Packages</b></summary>
-
-  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
-  To install in your working directory:
-
-  ```bash
-  pkgx install supabase
-  ```
-
-  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
-</details>
-
-### Run the CLI
+## 🛠️ Scripts
 
 ```bash
-supabase bootstrap
+# Development
+npm run dev                       # Start dev server with Turbopack
+
+# Production
+npm run build                     # Build for production
+npm start                         # Start production server
+
+# Database
+npm run update-types              # Generate TypeScript types from Supabase schema
+npm run migrate                   # Run database migrations
+
+# Utilities
+npm run ingest                    # Manually ingest a document
+npm run lint                      # Run ESLint
 ```
 
-Or using npx:
+## 🔧 Configuration
+
+### Customizing the AI Model
+Edit the chat API route to use different models:
+
+```typescript
+// src/app/api/chat/route.ts
+const model = new ChatOpenAI({
+  modelName: "gpt-4-turbo-preview", // Change model here
+  temperature: 0.7,
+  streaming: true,
+});
+```
+
+### Adjusting Chunk Retrieval
+Modify the number of retrieved chunks:
+
+```typescript
+// src/app/api/chat/route.ts
+const results = await retriever.getRelevantDocuments(question, {
+  k: 5, // Number of chunks to retrieve
+});
+```
+
+## 🌟 Key Highlights for Judges
+
+### Innovation
+- **Context-aware highlighting**: Automatically finds and highlights the exact text passage that answers the user's question
+- **Multi-level executive summaries**: Generates document overlines, key findings, risks, and recommendations automatically
+- **Split-screen UX**: Seamless integration of chat and PDF viewing
+
+### Technical Excellence
+- **Vector search with pgvector**: Efficient semantic search over embeddings
+- **Streaming responses**: Real-time AI responses using Vercel AI SDK
+- **Type-safe**: Full TypeScript coverage with generated database types
+- **Modern stack**: Next.js 15, React 19, App Router
+
+### User Experience
+- **Localized for sales teams**: German language support with domain-specific terminology
+- **Citation-driven trust**: Every answer is backed by source citations
+- **Progress tracking**: Visual feedback on document processing and coverage
+- **Export flexibility**: Multiple export formats for sharing insights
+
+## 🧪 Testing
 
 ```bash
-npx supabase bootstrap
+# Test organization chat
+npm run test:org-chat
+
+# Debug vector search
+npm run debug:vector-search
 ```
 
-The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
+## 📦 Deployment
 
-## Docs
+### Vercel (Recommended)
+1. Push to GitHub
+2. Import project in Vercel
+3. Add environment variables
+4. Deploy
 
-Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
+### Docker
+```bash
+# Build
+docker build -t ai-coach .
 
-## Breaking changes
-
-We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
-
-However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
-
-## Developing
-
-To run from source:
-
-```sh
-# Go >= 1.22
-go run . help
+# Run
+docker run -p 3000:3000 --env-file .env.local ai-coach
 ```
+
+## 🤝 Contributing
+
+This is a hackathon project. Contributions, ideas, and feedback are welcome!
+
+## 📄 License
+
+MIT License - feel free to use this project as inspiration for your own work.
+
+## 🙏 Acknowledgments
+
+- Built with [LangChain](https://langchain.com/) for RAG implementation
+- Powered by [OpenAI](https://openai.com/) for embeddings and chat
+- Database and auth by [Supabase](https://supabase.com/)
+- UI components with [Tailwind CSS](https://tailwindcss.com/)
+
+---
+
+**Built for 913.ai AI Agents Hackathon** - Transforming document management with AI 🚀

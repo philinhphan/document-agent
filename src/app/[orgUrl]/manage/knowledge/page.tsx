@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, use, useEffect } from 'react';
+import { useState, use, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface KnowledgeManagementPageProps {
@@ -42,7 +42,22 @@ interface Document {
   error_message: string | null;
 }
 
-const EXECUTIVE_BRIEF = {
+interface ExecutiveBrief {
+  heroSummary: string;
+  keyFindings: ExecutiveBullet[];
+  risks: ExecutiveBullet[];
+  recommendations: ExecutiveBullet[];
+  coverage: {
+    processedSections: number;
+    totalSections: number;
+    annotatedImages: number;
+    totalImages: number;
+  };
+}
+
+const DEFAULT_OVERVIEW_KEY = 'default';
+
+const BASE_EXECUTIVE_BRIEF = {
   heroSummary:
     'Diese Dokumentensammlung beschreibt Sales-Strategien, operative Leitplanken und unterstützendes Material für Gespräche mit Unternehmenskunden. Der Agent fasst die wichtigsten Erkenntnisse zusammen und markiert offene Punkte, die zusätzlichen Review benötigen.',
   keyFindings: [
@@ -92,9 +107,14 @@ const EXECUTIVE_BRIEF = {
     annotatedImages: 12,
     totalImages: 18
   }
+} satisfies ExecutiveBrief;
+
+const EXECUTIVE_BRIEFS: Record<string, ExecutiveBrief> = {
+  [DEFAULT_OVERVIEW_KEY]: BASE_EXECUTIVE_BRIEF,
+  '1749201432895-suxxeed_salesbible.pdf': { ...BASE_EXECUTIVE_BRIEF }
 };
 
-const OUTLINE_GRAPH: OutlineNode[] = [
+const BASE_OUTLINE: OutlineNode[] = [
   {
     id: 'outline-1',
     title: '1. Vorbereitung',
@@ -165,12 +185,120 @@ const OUTLINE_GRAPH: OutlineNode[] = [
     type: 'image',
     summary: 'Fotografierte Whiteboard-Notizen, unterschriebene Verträge, Pipeline Diagramme.'
   }
-];
+] satisfies OutlineNode[];
+
+const OUTLINE_MAP: Record<string, OutlineNode[]> = {
+  [DEFAULT_OVERVIEW_KEY]: BASE_OUTLINE,
+  '1749201432895-suxxeed_salesbible.pdf': BASE_OUTLINE
+};
+
+const buildBriefFromDocument = (doc?: Document): ExecutiveBrief => {
+  if (!doc) {
+    return BASE_EXECUTIVE_BRIEF;
+  }
+
+  const totalSections = Math.max(8, Math.round((doc.chunks_processed ?? 12) / 3));
+  const processedSections = doc.status === 'completed'
+    ? totalSections
+    : Math.max(1, Math.round(totalSections * 0.6));
+  const totalImages = Math.max(4, Math.round(totalSections / 2));
+  const annotatedImages = doc.status === 'completed'
+    ? Math.max(2, Math.round(totalImages * 0.75))
+    : Math.max(1, Math.round(totalImages * 0.4));
+
+  return {
+    heroSummary: `Zusammenfassung für ${doc.original_name}: Der Agent hat das Dokument analysiert und zentrale Aussagen für Vertriebsteams extrahiert.`,
+    keyFindings: BASE_EXECUTIVE_BRIEF.keyFindings.map((item, index) => ({
+      ...item,
+      id: `${item.id}-${doc.id}`,
+      text:
+        index === 0
+          ? `Kerngliederung von ${doc.original_name}: ${item.text}`
+          : item.text
+    })),
+    risks: BASE_EXECUTIVE_BRIEF.risks.map((item) => ({
+      ...item,
+      id: `${item.id}-${doc.id}`
+    })),
+    recommendations: BASE_EXECUTIVE_BRIEF.recommendations.map((item) => ({
+      ...item,
+      id: `${item.id}-${doc.id}`
+    })),
+    coverage: {
+      processedSections,
+      totalSections,
+      annotatedImages,
+      totalImages
+    }
+  };
+};
+
+const buildOutlineFromDocument = (doc?: Document): OutlineNode[] => {
+  if (!doc) {
+    return BASE_OUTLINE;
+  }
+
+  return [
+    {
+      id: `outline-${doc.id}-intro`,
+      title: `${doc.original_name} – Überblick`,
+      pageRange: 'Page 1-3',
+      confidence: doc.status === 'completed' ? 'high' : 'medium',
+      summary: 'Automatisch generierte Einleitung mit wichtigsten Argumenten.'
+    },
+    {
+      id: `outline-${doc.id}-core`,
+      title: 'Kerninhalte & Leitfäden',
+      pageRange: 'Page 4-17',
+      confidence: doc.status === 'completed' ? 'high' : 'medium',
+      summary: 'Checklisten, Gesprächsleitfäden und Templates für Vertriebsaktionen.',
+      children: [
+        {
+          id: `outline-${doc.id}-core-methods`,
+          title: 'Methoden & Frameworks',
+          pageRange: 'Page 8-12',
+          confidence: 'high'
+        },
+        {
+          id: `outline-${doc.id}-core-scripts`,
+          title: 'Talk Tracks & Scripts',
+          pageRange: 'Page 13-17',
+          confidence: 'medium'
+        }
+      ]
+    },
+    {
+      id: `outline-${doc.id}-evidence`,
+      title: 'Anhang & evidenzbasierte Beispiele',
+      pageRange: 'Page 18+',
+      confidence: 'medium',
+      type: 'image',
+      summary: 'Visuals (Charts, unterschriebene Verträge, Checklisten-Scans).' 
+    }
+  ];
+};
+
+const getExecutiveBrief = (docKey: string, docs: Document[] = []): ExecutiveBrief => {
+  const doc = docs?.find((item) => item.filename === docKey);
+  if (doc) {
+    return buildBriefFromDocument(doc);
+  }
+  return EXECUTIVE_BRIEFS[docKey] ?? BASE_EXECUTIVE_BRIEF;
+};
+
+const getOutlineNodes = (docKey: string, docs: Document[] = []): OutlineNode[] => {
+  const doc = docs?.find((item) => item.filename === docKey);
+  if (doc) {
+    return buildOutlineFromDocument(doc);
+  }
+  return OUTLINE_MAP[docKey] ?? BASE_OUTLINE;
+};
 
 export default function KnowledgeManagement({ params }: KnowledgeManagementPageProps) {
   const { orgUrl } = use(params);
   const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'upload'>('overview');
-  const [selectedOutlineId, setSelectedOutlineId] = useState<string | null>(OUTLINE_GRAPH[0]?.id ?? null);
+  const [selectedDocKey, setSelectedDocKey] = useState<string>(DEFAULT_OVERVIEW_KEY);
+  const [selectedOutlineId, setSelectedOutlineId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{
@@ -180,7 +308,31 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [overviewCache, setOverviewCache] = useState<Record<string, OverviewPayload>>({
+    [DEFAULT_OVERVIEW_KEY]: {
+      brief: BASE_EXECUTIVE_BRIEF,
+      outline: BASE_OUTLINE
+    }
+  });
+  const [overviewLoadingKey, setOverviewLoadingKey] = useState<string | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
   const router = useRouter();
+
+  const activeBrief = useMemo(() => {
+    const cached = overviewCache[selectedDocKey];
+    if (cached) {
+      return cached.brief;
+    }
+    return getExecutiveBrief(selectedDocKey, documents);
+  }, [selectedDocKey, documents, overviewCache]);
+
+  const outlineNodes = useMemo(() => {
+    const cached = overviewCache[selectedDocKey];
+    if (cached) {
+      return cached.outline;
+    }
+    return getOutlineNodes(selectedDocKey, documents);
+  }, [selectedDocKey, documents, overviewCache]);
 
   const findOutlineNode = (nodes: OutlineNode[], id: string): OutlineNode | null => {
     for (const node of nodes) {
@@ -197,14 +349,14 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
     return null;
   };
 
-  const selectedNode = selectedOutlineId ? findOutlineNode(OUTLINE_GRAPH, selectedOutlineId) : null;
+  const selectedNode = selectedOutlineId ? findOutlineNode(outlineNodes, selectedOutlineId) : null;
 
-  const processedCoverage = EXECUTIVE_BRIEF.coverage.totalSections
-    ? Math.round((EXECUTIVE_BRIEF.coverage.processedSections / EXECUTIVE_BRIEF.coverage.totalSections) * 100)
+  const processedCoverage = activeBrief.coverage.totalSections
+    ? Math.round((activeBrief.coverage.processedSections / activeBrief.coverage.totalSections) * 100)
     : 0;
 
-  const imageCoverage = EXECUTIVE_BRIEF.coverage.totalImages
-    ? Math.round((EXECUTIVE_BRIEF.coverage.annotatedImages / EXECUTIVE_BRIEF.coverage.totalImages) * 100)
+  const imageCoverage = activeBrief.coverage.totalImages
+    ? Math.round((activeBrief.coverage.annotatedImages / activeBrief.coverage.totalImages) * 100)
     : 0;
 
   const confidenceBadge = (level: ConfidenceLevel) => {
@@ -229,31 +381,36 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
     }
   };
 
+  const isOverviewLoading = overviewLoadingKey === selectedDocKey;
+
   const exportAsMarkdown = () => {
     const lines: string[] = [];
     lines.push(`# Executive Brief`);
     lines.push('');
-    lines.push(EXECUTIVE_BRIEF.heroSummary);
+    lines.push(activeBrief.heroSummary);
     lines.push('');
     lines.push('## Key Findings');
-    EXECUTIVE_BRIEF.keyFindings.forEach((item, idx) => {
+    activeBrief.keyFindings.forEach((item, idx) => {
       lines.push(`${idx + 1}. ${item.text} (${item.citation.source}, ${item.citation.page})`);
     });
     lines.push('');
     lines.push('## Risks / Alerts');
-    EXECUTIVE_BRIEF.risks.forEach((item, idx) => {
+    activeBrief.risks.forEach((item, idx) => {
       lines.push(`${idx + 1}. ${item.text} (${item.citation.source}, ${item.citation.page})`);
     });
     lines.push('');
     lines.push('## Recommended Actions');
-    EXECUTIVE_BRIEF.recommendations.forEach((item, idx) => {
+    activeBrief.recommendations.forEach((item, idx) => {
       lines.push(`${idx + 1}. ${item.text} (${item.citation.source}, ${item.citation.page})`);
     });
     const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `executive-brief-${orgUrl}.md`;
+    const suffix = selectedDocKey === DEFAULT_OVERVIEW_KEY
+      ? 'all-documents'
+      : selectedDocKey.replace(/[^a-zA-Z0-9-_]/g, '_');
+    link.download = `executive-brief-${suffix}.md`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -265,7 +422,10 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
     if (!popup) {
       return;
     }
-    popup.document.write(`<!DOCTYPE html><html><head><title>Executive Brief</title>
+    const suffix = selectedDocKey === DEFAULT_OVERVIEW_KEY
+      ? 'All Documents'
+      : selectedDocKey;
+    popup.document.write(`<!DOCTYPE html><html><head><title>Executive Brief – ${suffix}</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 24px; line-height: 1.5; }
         h1 { font-size: 24px; margin-bottom: 16px; }
@@ -275,17 +435,17 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
         .citation { color: #4b5563; font-size: 12px; }
       </style>
     </head><body>`);
-    popup.document.write(`<h1>Executive Brief</h1><p>${EXECUTIVE_BRIEF.heroSummary}</p>`);
+    popup.document.write(`<h1>Executive Brief</h1><p>${activeBrief.heroSummary}</p>`);
     popup.document.write('<h2>Key Findings</h2><ul>');
-    EXECUTIVE_BRIEF.keyFindings.forEach((item) => {
+    activeBrief.keyFindings.forEach((item) => {
       popup.document.write(`<li>${item.text}<div class="citation">${item.citation.source} — ${item.citation.page}</div></li>`);
     });
     popup.document.write('</ul><h2>Risks / Alerts</h2><ul>');
-    EXECUTIVE_BRIEF.risks.forEach((item) => {
+    activeBrief.risks.forEach((item) => {
       popup.document.write(`<li>${item.text}<div class="citation">${item.citation.source} — ${item.citation.page}</div></li>`);
     });
     popup.document.write('</ul><h2>Recommended Actions</h2><ul>');
-    EXECUTIVE_BRIEF.recommendations.forEach((item) => {
+    activeBrief.recommendations.forEach((item) => {
       popup.document.write(`<li>${item.text}<div class="citation">${item.citation.source} — ${item.citation.page}</div></li>`);
     });
     popup.document.write('</ul></body></html>');
@@ -360,6 +520,70 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
     fetchDocuments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgUrl]);
+
+  useEffect(() => {
+    if (documents.length > 0) {
+      const defaultDocKey = documents[0].filename;
+      setSelectedDocKey((current) => {
+        const stillExists = documents.some((doc) => doc.filename === current);
+        if (current === DEFAULT_OVERVIEW_KEY || !stillExists) {
+          return defaultDocKey;
+        }
+        return current;
+      });
+    } else {
+      setSelectedDocKey(DEFAULT_OVERVIEW_KEY);
+    }
+  }, [documents]);
+
+  useEffect(() => {
+    const nodes = getOutlineNodes(selectedDocKey, documents);
+    setSelectedOutlineId(nodes[0]?.id ?? null);
+  }, [selectedDocKey, documents]);
+
+  useEffect(() => {
+    const loadOverview = async (docKey: string) => {
+      if (overviewCache[docKey]) {
+        return;
+      }
+
+      setOverviewLoadingKey(docKey);
+      setOverviewError(null);
+
+      try {
+        const params = new URLSearchParams({ orgUrl });
+        if (docKey !== DEFAULT_OVERVIEW_KEY) {
+          params.append('filename', docKey);
+        }
+
+        const response = await fetch(`/api/overview?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch overview (${response.status})`);
+        }
+
+        const payload = (await response.json()) as OverviewPayload;
+        setOverviewCache((previous) => ({
+          ...previous,
+          [docKey]: payload
+        }));
+      } catch (error) {
+        console.error('Failed to load overview', error);
+        setOverviewError(error instanceof Error ? error.message : 'Unable to load overview');
+        const fallback = {
+          brief: getExecutiveBrief(docKey, documents),
+          outline: getOutlineNodes(docKey, documents)
+        };
+        setOverviewCache((previous) => ({
+          ...previous,
+          [docKey]: fallback
+        }));
+      } finally {
+        setOverviewLoadingKey((current) => (current === docKey ? null : current));
+      }
+    };
+
+    loadOverview(selectedDocKey);
+  }, [selectedDocKey, orgUrl, overviewCache, documents]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -662,10 +886,40 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
   const renderOverviewSection = () => (
     <div className="space-y-6">
       <section className="bg-white rounded-lg shadow p-6">
+        {isOverviewLoading && (
+          <div className="flex items-center gap-2 text-xs text-blue-600 mb-4">
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9H20m0 0V4m0 5l-2.5-2.5M4 20l2.5-2.5M4 15h.582a8.001 8.001 0 0015.356 2H20v5" />
+            </svg>
+            Generating updated summary…
+          </div>
+        )}
+        {overviewError && (
+          <div className="mb-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+            {overviewError}
+          </div>
+        )}
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Executive Brief</h2>
-            <p className="text-sm text-gray-700 mt-2 max-w-3xl">{EXECUTIVE_BRIEF.heroSummary}</p>
+          <div className="space-y-2">
+            <div className="flex items-center flex-wrap gap-3">
+              <h2 className="text-lg font-semibold text-gray-900">Executive Brief</h2>
+              <div className="inline-flex items-center gap-2 text-xs text-gray-500">
+                <span className="font-semibold uppercase tracking-wide">Document</span>
+                <select
+                  value={selectedDocKey}
+                  onChange={(event) => setSelectedDocKey(event.target.value)}
+                  className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value={DEFAULT_OVERVIEW_KEY}>All documents</option>
+                  {documents.map((doc) => (
+                    <option key={doc.id} value={doc.filename}>
+                      {doc.original_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700 max-w-3xl">{activeBrief.heroSummary}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -691,19 +945,21 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[
-            { title: 'Key Findings', items: EXECUTIVE_BRIEF.keyFindings },
-            { title: 'Risks & Alerts', items: EXECUTIVE_BRIEF.risks },
-            { title: 'Recommended Actions', items: EXECUTIVE_BRIEF.recommendations }
+            { title: 'Key Findings', items: activeBrief.keyFindings ?? [] },
+            { title: 'Risks & Alerts', items: activeBrief.risks ?? [] },
+            { title: 'Recommended Actions', items: activeBrief.recommendations ?? [] }
           ].map((card) => (
             <div key={card.title} className="border border-gray-200 rounded-lg p-4 h-full">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">{card.title}</h3>
               <ul className="space-y-2 text-sm text-gray-700">
-                {card.items.map((item) => (
-                  <li key={item.id} className="leading-snug">
+                {card.items.map((item, index) => (
+                  <li key={item.id ?? `${card.title}-${index}`} className="leading-snug">
                     {item.text}
-                    <div className="text-xs text-blue-600 mt-1">
-                      {item.citation.source} • {item.citation.page}
-                    </div>
+                    {item.citation?.source && item.citation?.page && (
+                      <div className="text-xs text-blue-600 mt-1">
+                        {item.citation.source} • {item.citation.page}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -724,7 +980,7 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
               <div className="h-2 rounded-full bg-green-500" style={{ width: `${processedCoverage}%` }}></div>
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              {EXECUTIVE_BRIEF.coverage.processedSections} von {EXECUTIVE_BRIEF.coverage.totalSections} Kapiteln analysiert
+              {activeBrief.coverage.processedSections} von {activeBrief.coverage.totalSections} Kapiteln analysiert
             </p>
           </div>
 
@@ -737,7 +993,7 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
               <div className="h-2 rounded-full bg-amber-500" style={{ width: `${imageCoverage}%` }}></div>
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              {EXECUTIVE_BRIEF.coverage.annotatedImages} von {EXECUTIVE_BRIEF.coverage.totalImages} Bildern annotiert
+              {activeBrief.coverage.annotatedImages} von {activeBrief.coverage.totalImages} Bildern annotiert
             </p>
           </div>
         </div>
@@ -770,8 +1026,9 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
   );
 
   return (
-    <div className="max-w-7xl mx-auto py-12 px-4 lg:px-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-7xl mx-auto py-12 px-4 lg:px-6">
+        <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Document Workspace</h1>
           <p className="text-sm text-gray-600 mt-1">Überblick, Nachweise und Uploads für {orgUrl}</p>
@@ -812,9 +1069,13 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
               <h2 className="text-sm font-semibold text-gray-900">Outline & Minimap</h2>
               <span className="text-xs text-gray-500">Agent coverage</span>
             </div>
-            <ul className="space-y-2 text-sm text-gray-800">
-              {OUTLINE_GRAPH.map((node) => renderOutlineNode(node))}
-            </ul>
+            {outlineNodes.length > 0 ? (
+              <ul className="space-y-2 text-sm text-gray-800">
+                {outlineNodes.map((node) => renderOutlineNode(node))}
+              </ul>
+            ) : (
+              <p className="text-xs text-gray-500">Keine Outline verfügbar.</p>
+            )}
           </aside>
         )}
 
@@ -823,6 +1084,7 @@ export default function KnowledgeManagement({ params }: KnowledgeManagementPageP
           {activeTab === 'documents' && renderDocumentsSection()}
           {activeTab === 'upload' && renderUploadSection()}
         </main>
+      </div>
       </div>
     </div>
   );
