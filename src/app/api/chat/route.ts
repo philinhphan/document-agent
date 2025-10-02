@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import { Message as VercelChatMessage, streamText } from 'ai';
 import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
 import { createClient } from '@supabase/supabase-js';
@@ -48,20 +47,6 @@ const formatDocuments = (docs: Document[]): string => {
         return `Chunk ${i + 1} (Source: ${source}, Page: ${page}):\n${doc.pageContent}`;
     }).join("\n\n");
 };
-
-const formatVercelMessages = (chatHistory: VercelChatMessage[]) => {
-  const formattedDialogueTurns = chatHistory.map((message) => {
-    if (message.role === "user") {
-      return `Human: ${message.content}`;
-    } else if (message.role === "assistant") {
-      return `Assistant: ${message.content}`;
-    } else {
-      return `${message.role}: ${message.content}`;
-    }
-  });
-  return formattedDialogueTurns.join("\n");
-};
-
 
 // --- Main POST Handler ---
 export async function POST(req: NextRequest) {
@@ -180,8 +165,9 @@ ${org.llmCompanyContext ? `- Additional Context: ${org.llmCompanyContext}` : ''}
 
         return LangChainAdapter.toDataStreamResponse(ragChainStream);
 
-    } catch (e: any) {
-        console.error("Chat API Error:", e);
-        return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    } catch (error: unknown) {
+        console.error("Chat API Error:", error);
+        const message = error instanceof Error ? error.message : 'Unexpected server error';
+        return new Response(JSON.stringify({ error: message }), { status: 500 });
     }
 }

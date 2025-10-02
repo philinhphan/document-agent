@@ -28,9 +28,11 @@
     "langchain": "^0.3.24",
     "next": "15.3.1",
     "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^5.4.149",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-markdown": "^10.1.0"
+    "react-markdown": "^10.1.0",
+    "react-pdf": "^10.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -41,6 +43,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.3.1",
+    "supabase": "^2.47.2",
     "tailwindcss": "^4",
     "tsx": "^4.19.4",
     "typescript": "^5"

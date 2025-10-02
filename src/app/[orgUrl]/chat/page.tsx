@@ -2,8 +2,17 @@
 
 import { useChat, Message } from 'ai/react'; // Vercel AI SDK hook
 import ReactMarkdown from 'react-markdown';
-import { useEffect, useRef, useState } from 'react'; // Add useState
+import { useEffect, useRef, useState, use } from 'react';
+import dynamic from 'next/dynamic';
 import SourceCitation from '../../components/SourceCitation';
+
+// Dynamically import PdfViewer with no SSR
+const PdfViewer = dynamic(() => import('../../components/PdfViewer'), {
+  ssr: false,
+  loading: () => <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
+    <div className="text-white">Loading PDF viewer...</div>
+  </div>
+});
 
 // Add interface for suggestions
 interface Suggestion {
@@ -11,100 +20,189 @@ interface Suggestion {
   type: 'question' | 'response';
 }
 
+interface HighlightApiChunk {
+  id: number;
+  text: string;
+  page: number | null;
+  source: string | null;
+}
+
+interface HighlightApiResponse {
+  highlight: {
+    text: string;
+    chunkId: number;
+  } | null;
+  chunks: HighlightApiChunk[];
+}
+
 // Custom component for handling source citations in markdown
-const CitationComponent = ({ children }: { children: string }) => {
+const CitationComponent = ({
+  children,
+  snippet,
+  onShowSource
+}: {
+  children: string;
+  snippet?: string;
+  onShowSource: (source: string, page: number, snippet?: string) => Promise<void>;
+}) => {
   // Parse the citation text to extract source and page
-  const match = children.match(/\[Source: (.*?), Page (.*?)\]/);
+  // Support both formats: "Page X" and "Page: X"
+  const match = children.match(/\[Source: (.*?), Page:?\s*(\d+)\]/);
   if (match) {
-    const [_, source, page] = match;
-    return <SourceCitation source={source} page={page} />;
+    const [, source, page] = match;
+    return <SourceCitation source={source} page={page} snippet={snippet} onShowSource={onShowSource} />;
   }
   return <>{children}</>;
 };
 
+const citationPattern = /\[Source: .*?, Page(?:\s*:\s*)?\s*[^\]]+\]/i;
+const citationPatternGlobal = /\[Source: .*?, Page(?:\s*:\s*)?\s*[^\]]+\]/gi;
+const citationSplitRegex = /(\[Source: .*?, Page(?:\s*:\s*)?\s*[^\]]+\])/gi;
+const stripCitations = (text: string) => text.replace(/\[Source: .*?, Page(?:\s*:\s*)?\s*[^\]]+\]/gi, '');
+const citationRegexSingle = /^\[Source: .*?, Page(?:\s*:\s*)?\s*[^\]]+\]$/i;
+
+const hasCitationPattern = (text: string) => citationPattern.test(text);
+const getCitationMatches = (text: string) => [...text.matchAll(citationPatternGlobal)];
+
+const cleanWhitespace = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+const extractRepresentativeSnippet = (text: string) => {
+  const cleaned = cleanWhitespace(text);
+  if (!cleaned) {
+    return '';
+  }
+
+  const sentenceSplits = cleaned.split(/(?<=[.!?])\s+/);
+  const candidate = sentenceSplits[sentenceSplits.length - 1]?.trim();
+
+  if (candidate && candidate.length > 0) {
+    return candidate;
+  }
+
+  const words = cleaned.split(' ');
+  const maxWords = 35;
+  if (words.length > maxWords) {
+    return words.slice(words.length - maxWords).join(' ');
+  }
+
+  return cleaned;
+};
+
+const buildCitationData = (paragraph: string) => {
+  const matches = getCitationMatches(paragraph);
+  let cursor = 0;
+
+  return matches.map((match) => {
+    const citationText = match[0];
+    const matchIndex = match.index ?? paragraph.indexOf(citationText, cursor);
+    const snippetSource = matchIndex >= 0 ? paragraph.slice(cursor, matchIndex) : paragraph;
+    cursor = matchIndex >= 0 ? matchIndex + citationText.length : cursor;
+
+    return {
+      citationText,
+      snippet: extractRepresentativeSnippet(snippetSource)
+    };
+  });
+};
+
 // Component that renders markdown and handles citations
-const MarkdownWithCitations = ({ content }: { content: string }) => {
-  // Check if content has citations
-  const hasCitations = /\[Source: .*?, Page .*?\]/.test(content);
-  
-  if (!hasCitations) {
+const MarkdownWithCitations = ({
+  content,
+  onShowSource
+}: {
+  content: string;
+  onShowSource: (source: string, page: number, snippet?: string) => Promise<void>;
+}) => {
+  // Check if content has citations (support both "Page X" and "Page: X")
+  if (!hasCitationPattern(content)) {
     // No citations, render markdown normally
     return <ReactMarkdown>{content}</ReactMarkdown>;
   }
-  
-  // If there are citations, we need to process them
+
   // Split content at paragraph level to preserve list structure
   const paragraphs = content.split(/\n\n+/);
-  
+
   return (
     <div>
       {paragraphs.map((paragraph, paragraphIndex) => {
-        // Check if this paragraph contains citations
-        const citationRegex = /\[Source: .*?, Page .*?\]/g;
-        const citations = paragraph.match(citationRegex);
-        
-        if (!citations) {
-          // No citations in this paragraph, render as markdown
+        const matches = getCitationMatches(paragraph);
+
+        if (matches.length === 0) {
           return (
             <ReactMarkdown key={paragraphIndex}>
               {paragraph}
             </ReactMarkdown>
           );
         }
-        
-        // This paragraph has citations, process them
-        const parts = paragraph.split(/(\[Source: .*?, Page .*?\])/);
+
+        const citationData = buildCitationData(paragraph);
         const hasListItems = /^\s*[\d+\-\*]/.test(paragraph);
-        
+
         if (hasListItems) {
-          // This is a list, render the whole paragraph as markdown first
-          // then process citations in a second pass
-          const citationFreeContent = paragraph.replace(/\[Source: .*?, Page .*?\]/g, '');
-          
+          const citationFreeContent = stripCitations(paragraph);
+
           return (
             <div key={paragraphIndex}>
               <ReactMarkdown>{citationFreeContent}</ReactMarkdown>
-              {citations.map((citation, citIndex) => (
-                <CitationComponent key={`${paragraphIndex}-${citIndex}`}>
-                  {citation}
+              {citationData.map((data, citIndex) => (
+                <CitationComponent
+                  key={`${paragraphIndex}-${citIndex}`}
+                  snippet={data.snippet}
+                  onShowSource={onShowSource}
+                >
+                  {data.citationText}
                 </CitationComponent>
               ))}
             </div>
           );
-        } else {
-          // Regular paragraph with citations
-          return (
-            <div key={paragraphIndex}>
-              {parts.map((part, partIndex) => {
-                if (part.match(/\[Source: .*?, Page .*?\]/)) {
-                  return (
-                    <CitationComponent key={`${paragraphIndex}-${partIndex}`}>
-                      {part}
-                    </CitationComponent>
-                  );
-                } else if (part.trim()) {
-                  return (
-                    <ReactMarkdown key={`${paragraphIndex}-${partIndex}`}>
-                      {part}
-                    </ReactMarkdown>
-                  );
-                }
-                return null;
-              })}
-            </div>
-          );
         }
+
+        const parts = paragraph.split(citationSplitRegex);
+        let citationCounter = 0;
+
+        return (
+          <div key={paragraphIndex}>
+            {parts.map((part, partIndex) => {
+              const trimmedPart = part.trim();
+
+              if (citationRegexSingle.test(trimmedPart)) {
+                const data = citationData[citationCounter];
+                citationCounter += 1;
+
+                return (
+                  <CitationComponent
+                    key={`${paragraphIndex}-${partIndex}`}
+                    snippet={data?.snippet}
+                    onShowSource={onShowSource}
+                  >
+                    {trimmedPart}
+                  </CitationComponent>
+                );
+              }
+
+              if (trimmedPart) {
+                return (
+                  <ReactMarkdown key={`${paragraphIndex}-${partIndex}`}>
+                    {part}
+                  </ReactMarkdown>
+                );
+              }
+
+              return null;
+            })}
+          </div>
+        );
       })}
     </div>
   );
 };
 
 interface ChatPageProps {
-  params: { orgUrl: string };
+  params: Promise<{ orgUrl: string }>;
 }
 
 export default function Chat({ params }: ChatPageProps) {
-  const { orgUrl } = params;
+  const { orgUrl } = use(params);
   const { messages, input, handleInputChange, handleSubmit, isLoading, error, setMessages } = useChat({
     api: '/api/chat', // Points to our backend route
     body: {
@@ -113,8 +211,72 @@ export default function Chat({ params }: ChatPageProps) {
   });
   const messagesEndRef = useRef<HTMLDivElement>(null); // Create a ref for the scroll target
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]); // Add state for suggestions
+  const [pdfViewerState, setPdfViewerState] = useState<{
+    filename: string;
+    page: number;
+    highlightSnippets?: string[];
+    fallbackChunks?: string[];
+  } | null>(null);
 
   const USER_NAME = "Alex"; // Hardcoded user name for MVP
+
+  // Handle "Show Source" click to fetch chunks and open with highlighting
+  const handleShowSource = async (source: string, page: number, snippet?: string) => {
+    try {
+      const response = await fetch('/api/highlight', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          filename: source,
+          page,
+          answerSnippet: snippet ?? '',
+          orgUrl
+        })
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch highlight snippet');
+        setPdfViewerState({ filename: source, page });
+        return;
+      }
+
+      const data = (await response.json()) as HighlightApiResponse;
+
+      const rawFallback = data.chunks
+        ?.map((chunk) => chunk.text)
+        .filter((text): text is string => typeof text === 'string' && text.trim().length > 0) ?? [];
+      const fallbackChunks = rawFallback.length > 0 ? rawFallback : undefined;
+
+      const highlightText = data.highlight?.text?.trim();
+
+      if (highlightText) {
+        setPdfViewerState({
+          filename: source,
+          page,
+          highlightSnippets: [highlightText],
+          fallbackChunks
+        });
+        return;
+      }
+
+      if (fallbackChunks && fallbackChunks.length > 0) {
+        setPdfViewerState({ filename: source, page, fallbackChunks });
+      } else {
+        setPdfViewerState({ filename: source, page });
+      }
+    } catch (error) {
+      console.error('Error fetching highlight data:', error);
+      // Fallback: open without highlighting
+      setPdfViewerState({ filename: source, page });
+    }
+  };
+
+  // Close PDF viewer
+  const closePdfViewer = () => {
+    setPdfViewerState(null);
+  };
 
   // Send initial greeting message
   useEffect(() => {
@@ -160,27 +322,26 @@ export default function Chat({ params }: ChatPageProps) {
   };
 
   return (
-    <div className="flex flex-col w-full max-w-2xl mx-auto py-12 px-4">
-        <h1 className="text-2xl font-bold mb-4 text-center text-gray-900">AI Conversational Coach (MVP)</h1>
-        <p className="text-sm text-gray-700 mb-6 text-center">Stelle Fragen an deinen AI-Coach zu deinen Sales-Problemen.</p>
-
-        {/* Message List */}
-        <div className="flex-grow overflow-y-auto space-y-4 mb-4 pr-2 h-[60vh] border rounded-md p-4 bg-gray-50">
+    <div className="flex h-full w-full">
+        {/* Chat Section */}
+        <div className={`flex flex-col transition-all duration-300 ${pdfViewerState ? 'w-1/2' : 'w-full'}`}>
+            {/* Message List */}
+            <div className="flex-1 overflow-y-auto space-y-3 p-4 bg-gray-50">
             {messages.length > 0 ? (
                 messages.map((m: Message) => (
-                    <div key={m.id} className={`whitespace-pre-wrap ${
-                        m.role === 'user' ? 'text-right' : 'text-left'
+                    <div key={m.id} className={`flex ${
+                        m.role === 'user' ? 'justify-end' : 'justify-start'
                     }`}>
-                        <div className={`inline-block px-4 py-2 rounded-lg ${
+                        <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl ${
                             m.role === 'user'
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-gray-200 text-gray-800'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white text-gray-800 shadow-sm border border-gray-200'
                         }`}>
                             <div className={m.role === 'assistant' ? 'prose prose-sm max-w-none' : ''}>
                                 {m.role === 'user' ? (
-                                    m.content
+                                    <div className="text-sm">{m.content}</div>
                                 ) : (
-                                    <MarkdownWithCitations content={m.content} />
+                                    <MarkdownWithCitations content={m.content} onShowSource={handleShowSource} />
                                 )}
                             </div>
                         </div>
@@ -189,52 +350,69 @@ export default function Chat({ params }: ChatPageProps) {
             ) : (
                 <p className="text-center text-gray-400">No messages yet. Ask something!</p>
             )}
-            <div ref={messagesEndRef} /> {/* Invisible element to scroll to */}
+                <div ref={messagesEndRef} /> {/* Invisible element to scroll to */}
+            </div>
+
+            {/* Input Area - Fixed at bottom */}
+            <div className="bg-white border-t px-4 py-3 shadow-lg">
+            {/* Suggestions */}
+            {suggestions.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                    {suggestions.map((suggestion, index) => (
+                        <button
+                            key={index}
+                            onClick={() => handleSuggestionClick(suggestion)}
+                            className={`px-3 py-1.5 text-xs rounded-full transition-colors ${
+                                suggestion.type === 'question'
+                                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                        >
+                            {suggestion.text}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {/* Error Display */}
+            {error && (
+              <div className="text-red-500 text-xs p-2 border border-red-300 rounded mb-2 bg-red-50">
+                <strong>Error:</strong> {error.message}
+              </div>
+            )}
+
+            {/* Input Form */}
+            <form onSubmit={handleSubmit} className="flex space-x-2">
+                <input
+                    className="flex-1 px-4 py-2.5 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-full placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white"
+                    value={input}
+                    placeholder="Stelle eine Frage..."
+                    onChange={handleInputChange}
+                    disabled={isLoading}
+                />
+                <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-full hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    disabled={isLoading || !input.trim()}
+                >
+                    {isLoading ? '...' : 'Senden'}
+                </button>
+            </form>
+            </div>
         </div>
 
-        {/* Suggestions */}
-        {suggestions.length > 0 && (
-            <div className="mb-4 flex flex-wrap gap-2">
-                {suggestions.map((suggestion, index) => (
-                    <button
-                        key={index}
-                        onClick={() => handleSuggestionClick(suggestion)}
-                        className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-                            suggestion.type === 'question'
-                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                    >
-                        {suggestion.text}
-                    </button>
-                ))}
-            </div>
-        )}
-
-        {/* Error Display */}
-        {error && (
-          <div className="text-red-500 text-sm p-2 border border-red-300 rounded mb-2">
-            <strong>Error:</strong> {error.message}
+        {/* PDF Viewer - Side Panel */}
+        {pdfViewerState && (
+          <div className="w-1/2 border-l border-gray-300 bg-white">
+            <PdfViewer
+              filename={pdfViewerState.filename}
+              initialPage={pdfViewerState.page}
+              highlightSnippets={pdfViewerState.highlightSnippets}
+              fallbackChunks={pdfViewerState.fallbackChunks}
+              onClose={closePdfViewer}
+            />
           </div>
         )}
-
-        {/* Input Form */}
-        <form onSubmit={handleSubmit} className="flex space-x-2">
-            <input
-                className="flex-grow p-3 text-base font-medium text-gray-900 bg-white border border-gray-300 rounded-md placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={input}
-                placeholder="Stelle eine Frage..."
-                onChange={handleInputChange}
-                disabled={isLoading}
-            />
-            <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-                disabled={isLoading || !input.trim()}
-            >
-                {isLoading ? 'Wird gesendet...' : 'Senden'}
-            </button>
-        </form>
     </div>
   );
 } 

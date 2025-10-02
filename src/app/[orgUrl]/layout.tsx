@@ -48,33 +48,33 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50">
       {/* Organization Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
+      <header className="bg-white shadow-sm border-b flex-shrink-0">
+        <div className="px-6 py-3">
+          <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
               {org.iconUrl && (
-                <img 
-                  src={org.iconUrl} 
+                <img
+                  src={org.iconUrl}
                   alt={`${org.displayName} logo`}
                   className="h-8 w-8 rounded-full"
                 />
               )}
-              <h1 className="text-xl font-semibold text-gray-900">
+              <h1 className="text-lg font-semibold text-gray-900">
                 {org.displayName}
               </h1>
             </div>
-            <nav className="flex space-x-4">
-              <a 
+            <nav className="flex space-x-2">
+              <a
                 href={`/${orgUrl}/chat`}
-                className="text-gray-800 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                className="text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
                 Chat
               </a>
-              <a 
+              <a
                 href={`/${orgUrl}/manage/knowledge`}
-                className="text-gray-800 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                className="text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
                 Knowledge
               </a>
@@ -83,8 +83,8 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main>
+      {/* Main Content - takes remaining space */}
+      <main className="flex-1 overflow-hidden">
         {children}
       </main>
     </div>
