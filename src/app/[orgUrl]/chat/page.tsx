@@ -47,10 +47,10 @@ const CitationComponent = ({
 }) => {
   // Parse the citation text to extract source and page
   // Support both formats: "Page X" and "Page: X"
-  const match = children.match(/\[Source: (.*?), Page:?\s*(\d+)\]/);
+  const match = children.match(/\[Source: (.*?), Page:?\s*([^\]]+)\]/);
   if (match) {
-    const [, source, page] = match;
-    return <SourceCitation source={source} page={page} snippet={snippet} onShowSource={onShowSource} />;
+    const [, source, pageText] = match;
+    return <SourceCitation source={source} page={pageText} snippet={snippet} onShowSource={onShowSource} />;
   }
   return <>{children}</>;
 };
@@ -222,6 +222,9 @@ export default function Chat({ params }: ChatPageProps) {
 
   // Handle "Show Source" click to fetch chunks and open with highlighting
   const handleShowSource = async (source: string, page: number, snippet?: string) => {
+    // Show the viewer immediately so the PDF can start loading while we resolve highlighting.
+    setPdfViewerState({ filename: source, page });
+
     try {
       const response = await fetch('/api/highlight', {
         method: 'POST',
@@ -238,7 +241,6 @@ export default function Chat({ params }: ChatPageProps) {
 
       if (!response.ok) {
         console.error('Failed to fetch highlight snippet');
-        setPdfViewerState({ filename: source, page });
         return;
       }
 
@@ -263,13 +265,10 @@ export default function Chat({ params }: ChatPageProps) {
 
       if (fallbackChunks && fallbackChunks.length > 0) {
         setPdfViewerState({ filename: source, page, fallbackChunks });
-      } else {
-        setPdfViewerState({ filename: source, page });
       }
     } catch (error) {
       console.error('Error fetching highlight data:', error);
-      // Fallback: open without highlighting
-      setPdfViewerState({ filename: source, page });
+      // Viewer already open; keep it without highlighting
     }
   };
 

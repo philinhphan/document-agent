@@ -10,9 +10,21 @@ interface ChunkRecord {
 
 const escapeForRegex = (value: string) => value.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 
+const normalizeForComparison = (value: string) =>
+  value
+    .replace(/[\s\u00A0]+/g, ' ')
+    .replace(/[‐‑‒–—―]/g, '-')
+    .trim()
+    .toLowerCase();
+
 const findDirectMatch = (chunks: ChunkRecord[], snippet: string) => {
   const cleanedSnippet = snippet.trim();
   if (!cleanedSnippet) {
+    return null;
+  }
+
+  const normalizedSnippet = normalizeForComparison(cleanedSnippet);
+  if (!normalizedSnippet) {
     return null;
   }
 
@@ -22,15 +34,13 @@ const findDirectMatch = (chunks: ChunkRecord[], snippet: string) => {
       continue;
     }
 
-    if (content.includes(cleanedSnippet)) {
-      return { text: cleanedSnippet, chunkId: chunk.id };
-    }
-
-    const pattern = escapeForRegex(cleanedSnippet).replace(/\s+/g, '\\s+');
-    const regex = new RegExp(pattern, 'i');
-    const match = content.match(regex);
-    if (match && match[0]) {
-      return { text: match[0], chunkId: chunk.id };
+    const normalizedContent = normalizeForComparison(content);
+    if (normalizedContent.includes(normalizedSnippet)) {
+      const pattern = escapeForRegex(cleanedSnippet).replace(/\s+/g, '\\s+');
+      const regex = new RegExp(pattern, 'i');
+      const match = content.match(regex);
+      const text = match?.[0] ?? cleanedSnippet;
+      return { text, chunkId: chunk.id };
     }
   }
 
@@ -69,7 +79,7 @@ const buildLlmPrompt = (answerSnippet: string, chunks: ChunkRecord[]) => {
     .map((chunk, index) => `Chunk ${index} (id: ${chunk.id}):\n"""${chunk.content ?? ''}"""`)
     .join('\n\n');
 
-  return `You will receive an answer snippet from an assistant and several source chunks that came from a PDF.\n\nReturn a JSON object with exactly these keys: "chunkIndex" (number) and "exactText" (string).\n- "chunkIndex" must be the zero-based index of the chunk provided below.\n- "exactText" must be a literal substring copied from that chunk (including casing and punctuation).\n- If there is no literal match, respond with {"chunkIndex": -1, "exactText": ""}.\n- Do not add explanations or commentary.\n\nAnswer snippet:\n"""${answerSnippet}"""\n\nSource chunks:\n${chunkDescriptions}`;
+  return `You will receive a passage produced by an assistant and several source chunks taken from a PDF.\n\nDetermine which chunk most directly supports the answer. Return a JSON object with exactly these keys: "chunkIndex" (number) and "exactText" (string).\n- "chunkIndex" must be the zero-based index of the chunk provided below.\n- "exactText" must be text copied exactly from that chunk (preserve whitespace, punctuation, and line breaks as they appear).\n- If the answer snippet is empty, select the chunk that most strongly supports the implied question and choose the most relevant sentence or short paragraph from it.\n- Never fabricate text. If nothing is relevant, respond with {"chunkIndex": -1, "exactText": ""}.\n- Do not include commentary.\n\nAssistant answer snippet:\n"""${answerSnippet}"""\n\nSource chunks:\n${chunkDescriptions}`;
 };
 
 const parseLlmResponse = (raw: unknown) => {
@@ -107,6 +117,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { filename, page, answerSnippet = '', orgUrl } = body ?? {};
 
+    console.log('Highlight API request received', {
+      filename,
+      page,
+      orgUrl,
+      answerSnippetPreview: answerSnippet?.slice(0, 200) ?? '',
+      answerSnippetLength: answerSnippet?.length ?? 0
+    });
+
     if (!filename || page === undefined) {
       return NextResponse.json({ error: 'filename and page are required' }, { status: 400 });
     }
@@ -122,17 +140,17 @@ export async function POST(request: NextRequest) {
 
     const pageValue = typeof page === 'number' ? page.toString() : page;
 
-    let query = supabase
+    let baseQuery = supabase
       .from('document_chunks')
       .select('id, content, metadata')
       .eq('metadata->>source', filename)
       .eq('metadata->>page', pageValue);
 
     if (orgUrl) {
-      query = query.eq('metadata->>orgUrl', orgUrl);
+      baseQuery = baseQuery.eq('metadata->>orgUrl', orgUrl);
     }
 
-    const { data: initialChunks, error } = await query;
+    const { data: initialChunks, error } = await baseQuery;
 
     if (error) {
       console.error('Highlight API - error fetching chunks:', error);
@@ -140,6 +158,33 @@ export async function POST(request: NextRequest) {
     }
 
     let chunks = initialChunks ?? [];
+
+    if (chunks.length === 0) {
+      let pageNumberFallback: string | null = null;
+      if (typeof page === 'number') {
+        pageNumberFallback = page.toString();
+      } else if (typeof page === 'string') {
+        const numericMatch = page.match(/\d+/);
+        pageNumberFallback = numericMatch ? numericMatch[0] : null;
+      }
+
+      if (pageNumberFallback) {
+        let locQuery = supabase
+          .from('document_chunks')
+          .select('id, content, metadata')
+          .eq('metadata->>source', filename)
+          .eq('metadata->loc->>pageNumber', pageNumberFallback);
+
+        if (orgUrl) {
+          locQuery = locQuery.eq('metadata->>orgUrl', orgUrl);
+        }
+
+        const { data: locChunks } = await locQuery;
+        if (locChunks && locChunks.length > 0) {
+          chunks = locChunks;
+        }
+      }
+    }
 
     if (chunks.length === 0) {
       let fallbackQuery = supabase
@@ -160,15 +205,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ highlight: null, chunks: [] });
     }
 
-    const directMatch = answerSnippet ? findDirectMatch(chunks, answerSnippet) : null;
-
-    if (directMatch) {
-      return NextResponse.json({ highlight: directMatch, chunks: serializeChunks(chunks) });
-    }
+    console.log('Highlight API - candidate chunks',
+      chunks.map((chunk, index) => ({
+        index,
+        id: chunk.id,
+        preview: (chunk.content ?? '').slice(0, 150),
+        page: (chunk.metadata as { page?: unknown })?.page ?? (chunk.metadata as { loc?: { pageNumber?: unknown } }).loc?.pageNumber ?? null
+      }))
+    );
 
     let highlightResult: { text: string; chunkId: number } | null = null;
 
-    if (answerSnippet && process.env.OPENAI_API_KEY) {
+    if (process.env.OPENAI_API_KEY) {
       try {
         const llm = new ChatOpenAI({
           openAIApiKey: process.env.OPENAI_API_KEY,
@@ -178,7 +226,7 @@ export async function POST(request: NextRequest) {
 
         const prompt = buildLlmPrompt(answerSnippet, chunks);
         const llmResponse = await llm.invoke([
-          { role: 'system', content: 'Extract literal supporting spans from source chunks.' },
+          { role: 'system', content: 'Identify the exact supporting passage in the provided source chunks.' },
           { role: 'user', content: prompt }
         ]);
 
@@ -199,7 +247,10 @@ export async function POST(request: NextRequest) {
             ) {
               const targetChunk = chunks[parsed.chunkIndex];
               const content = targetChunk.content ?? '';
-              if (parsed.exactText && content.includes(parsed.exactText)) {
+              if (
+                parsed.exactText &&
+                normalizeForComparison(content).includes(normalizeForComparison(parsed.exactText))
+              ) {
                 highlightResult = { text: parsed.exactText, chunkId: targetChunk.id };
               }
             }
@@ -210,10 +261,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    if (!highlightResult) {
+      const directMatch = findDirectMatch(chunks, answerSnippet);
+      if (directMatch) {
+        highlightResult = directMatch;
+      }
+    }
+
+    const responseBody = {
       highlight: highlightResult,
       chunks: serializeChunks(chunks)
+    };
+
+    console.log('Highlight API response summary', {
+      hasHighlight: Boolean(highlightResult),
+      highlightLength: highlightResult?.text.length ?? 0,
+      highlightPreview: highlightResult?.text?.slice(0, 200) ?? '',
+      chunkCount: responseBody.chunks.length
     });
+
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error('Highlight API - unexpected error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

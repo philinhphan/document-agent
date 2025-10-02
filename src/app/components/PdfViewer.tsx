@@ -37,10 +37,13 @@ export default function PdfViewer({
         const response = await fetch(`/api/pdf?filename=${encodeURIComponent(filename)}`);
 
         if (!response.ok) {
-          throw new Error('Failed to fetch PDF');
+          throw new Error(`Failed to fetch PDF: ${response.status}`);
         }
 
         const data = await response.json();
+        if (!data?.url) {
+          throw new Error('PDF URL missing in response');
+        }
         setPdfUrl(data.url);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load PDF');
@@ -56,6 +59,10 @@ export default function PdfViewer({
     setNumPages(numPages);
     setPageNumber(initialPage);
   };
+
+  useEffect(() => {
+    setPageNumber(initialPage);
+  }, [initialPage]);
 
   const goToPrevPage = () => {
     setPageNumber((prev) => Math.max(prev - 1, 1));
@@ -84,14 +91,18 @@ export default function PdfViewer({
     // Reset existing highlights before applying new ones
     spans.forEach((span) => {
       span.style.backgroundColor = '';
+      span.style.color = '';
       span.style.padding = '';
       span.style.borderRadius = '';
+      span.style.boxShadow = '';
     });
 
     const highlightSpan = (span: HTMLSpanElement) => {
       span.style.backgroundColor = '#fef08a';
-      span.style.padding = '2px';
+      span.style.color = '#111827';
+      span.style.padding = '1px 2px';
       span.style.borderRadius = '2px';
+      span.style.boxShadow = '0 0 0 2px rgba(250, 204, 21, 0.35)';
     };
 
     const normalize = (text: string) => text.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -105,32 +116,35 @@ export default function PdfViewer({
         return;
       }
 
-      let remaining = normalizedSnippet;
+      // Try to find a contiguous sequence of spans that matches the snippet.
+      for (let i = 0; i < spans.length; i += 1) {
+        const spanSequence: HTMLSpanElement[] = [];
+        let combinedText = '';
 
-      for (const span of spans) {
-        const normalizedSpan = normalize(span.textContent || '');
-        if (!normalizedSpan) {
-          continue;
-        }
-
-        if (remaining.startsWith(normalizedSpan) && normalizedSpan.length > 0) {
-          if (!highlighted.has(span)) {
-            highlightSpan(span);
-            highlighted.add(span);
-            totalHighlights += 1;
+        for (let j = i; j < spans.length; j += 1) {
+          const span = spans[j];
+          const normalizedSpan = normalize(span.textContent || '');
+          if (!normalizedSpan) {
+            continue;
           }
 
-          remaining = remaining.slice(normalizedSpan.length).trimStart();
+          spanSequence.push(span);
+          combinedText = `${combinedText} ${normalizedSpan}`.trim();
 
+          if (combinedText.length >= normalizedSnippet.length) {
+            if (combinedText.includes(normalizedSnippet)) {
+              spanSequence.forEach((seqSpan) => {
+                if (!highlighted.has(seqSpan)) {
+                  highlightSpan(seqSpan);
+                  highlighted.add(seqSpan);
+                  totalHighlights += 1;
+                }
+              });
+              return;
+            }
+            break;
+          }
         }
-
-        if (!remaining) {
-          break;
-        }
-      }
-
-      if (!remaining) {
-        return;
       }
 
       // Fallback: highlight partial matches to show at least the relevant words
